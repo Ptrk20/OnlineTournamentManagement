@@ -1,0 +1,241 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OTM &mdash; Online Tournament Management</title>
+  <meta name="description" content="Online Tournament Management System" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="nav-brand">
+        <div class="brand-icon">&#127942;</div>
+        <div>
+          <span class="brand-name">OTM</span>
+          <span class="brand-sub">Tournament Management</span>
+        </div>
+      </a>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="news.html">News</a></li>
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="contact.html">Contact Us</a></li>
+        <li><a href="login.html" class="btn-login">Login</a></li>
+      </ul>
+    </div>
+  </nav>
+  <section class="hero">
+    <div class="container">
+      <div class="hero-content">
+        <span class="tagline">&#127942; Campus Sportsfest 2026</span>
+        <h1>WHO'S GONNA <span>WIN?</span></h1>
+        <p>The battle for glory is on! Follow the live medal standings as IT, CS, Crim, HRM and more clash across Volleyball, Basketball, Futsal and Badminton.</p>
+        <div class="hero-buttons">
+          <a href="events.html" class="btn btn-primary">&#9889; View Events</a>
+        </div>
+      </div>
+
+      <div class="hero-visual" id="medal-standings">
+        <!-- Medal Standings Table -->
+        <div id="standingsCard" style="
+          background: rgba(255,255,255,0.08);
+          backdrop-filter: blur(14px);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 16px;
+          overflow: hidden;
+          min-width: 360px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        ">
+          <!-- Header -->
+          <div style="
+            background: rgba(212, 161, 122, 0.85);
+            padding: 12px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          ">
+            <span style="font-weight:800;font-size:.95rem;color:#fff;letter-spacing:.5px;">&#127942; MEDAL STANDINGS</span>
+            <span id="liveIndicator" style="
+              display:flex;align-items:center;gap:6px;
+              font-size:.72rem;font-weight:700;color:#fff;
+              background:rgba(0,0,0,.25);padding:4px 10px;border-radius:20px;
+            ">
+              <span style="width:7px;height:7px;background:#4cff72;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block;"></span>
+              LIVE
+            </span>
+          </div>
+
+          <!-- Sports Icons Row -->
+          <div class="standings-icons-row">
+            <div style="text-align:left;">Course</div>
+            <div title="Volleyball">&#127952;</div>
+            <div title="Basketball">&#127936;</div>
+            <div title="Futsal">&#9917;</div>
+            <div title="Badminton">&#127992;</div>
+            <div>&#129351;</div>
+            <div>&#129352;</div>
+            <div>&#129353;</div>
+          </div>
+
+          <!-- Sport Labels -->
+          <div class="standings-labels-row">
+            <div></div>
+            <div>VOL</div>
+            <div>BBL</div>
+            <div>FUT</div>
+            <div>BAD</div>
+            <div class="label-gold">G</div>
+            <div class="label-silver">S</div>
+            <div class="label-bronze">B</div>
+          </div>
+
+          <!-- Standings Rows -->
+          <div id="standingsBody"></div>
+
+          <!-- Footer -->
+          <div class="standings-footer">
+            Last updated: <span id="lastUpdated">just now</span> &nbsp;&#8226;&nbsp; Updates every 30s
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+  <section class="section-pad" id="events-section">
+    <div class="container">
+      <div class="section-heading reveal">
+        <span class="sub">Current &amp; Upcoming</span>
+        <h2>Featured Events</h2>
+        <div class="section-divider"></div>
+      </div>
+      <div class="events-grid" id="events-list"><div class="spinner"></div></div>
+      <div class="text-center" style="margin-top:40px;"><a href="events.html" class="btn btn-dark">View All Events &rarr;</a></div>
+    </div>
+  </section>
+  <section class="section-pad" style="background:#fff;">
+    <div class="container">
+      <div class="section-heading reveal"><span class="sub">Latest Updates</span><h2>News &amp; Highlights</h2><div class="section-divider"></div></div>
+      <div class="news-grid" id="news-list"><div class="spinner"></div></div>
+      <div class="text-center" style="margin-top:40px;"><a href="news.html" class="btn btn-dark">All News &rarr;</a></div>
+    </div>
+  </section>
+
+  <section class="section-pad" style="background:#fff;">
+    <div class="container">
+      <div class="section-heading reveal">
+        <span class="sub">Who We Are</span>
+        <h2>About Us</h2>
+        <div class="section-divider"></div>
+        <p>Online Tournament Management helps organizers run campus sports events with better scheduling, tracking, reporting, and communication.</p>
+      </div>
+      <div class="about-grid">
+        <div class="about-image reveal">&#127942;</div>
+        <div class="about-content reveal">
+          <p>Our platform is built to simplify tournament operations from registration to final standings while keeping participants informed through fast updates.</p>
+          <ul class="about-list">
+            <li><span class="check">&#10003;</span> Event setup and match scheduling</li>
+            <li><span class="check">&#10003;</span> Live standings and result tracking</li>
+            <li><span class="check">&#10003;</span> SMS notifications powered by iTexMo</li>
+            <li><span class="check">&#10003;</span> Reports for organizers and admins</li>
+          </ul>
+          <a href="about.html" class="btn btn-primary" style="margin-top:10px;">Learn More About Us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-pad">
+    <div class="container">
+      <div class="section-heading reveal">
+        <span class="sub">Get In Touch</span>
+        <h2>Contact Us</h2>
+        <div class="section-divider"></div>
+        <p>Have questions about tournaments, schedules, or platform access? Reach out and our team will assist you.</p>
+      </div>
+      <div class="contact-grid">
+        <div class="contact-info reveal">
+          <div class="contact-detail">
+            <div class="ci-icon">&#128205;</div>
+            <div>
+              <h4>Address</h4>
+              <p>Cavite, Philippines</p>
+            </div>
+          </div>
+          <div class="contact-detail">
+            <div class="ci-icon">&#128222;</div>
+            <div>
+              <h4>Phone</h4>
+              <p>+63 000 000 0000</p>
+            </div>
+          </div>
+          <div class="contact-detail">
+            <div class="ci-icon">&#9993;</div>
+            <div>
+              <h4>Email</h4>
+              <p>info@otm.ph</p>
+            </div>
+          </div>
+        </div>
+        <div class="contact-form-card reveal" style="display:flex;align-items:center;justify-content:center;text-align:center;">
+          <div>
+            <h3 style="margin-bottom:12px;">Need help quickly?</h3>
+            <p style="margin-bottom:20px;">Visit our Contact page and send us your inquiry. We usually respond within one business day.</p>
+            <a href="contact.html" class="btn btn-primary">Go to Contact Us</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-main">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <div class="logo"><div class="icon">&#127942;</div> OTM</div>
+            <p>An online computer-based platform providing organizers with the tools to organize, evaluate, and efficiently manage sporting events with SMS notification support.</p>
+            <div class="social-links">
+              <a href="#" aria-label="Facebook">f</a>
+              <a href="#" aria-label="Twitter">t</a>
+              <a href="#" aria-label="Instagram">in</a>
+            </div>
+          </div>
+          <div class="footer-col">
+            <h4>Quick Links</h4>
+                <ul>
+                    <li><a href="index.html">&rsaquo; Home</a></li>
+                    <li><a href="events.html">&rsaquo; Events</a></li>
+                    <li><a href="news.html">&rsaquo; News</a></li>
+                    <li><a href="about.html">&rsaquo; About Us</a></li>
+                    <li><a href="contact.html">&rsaquo; Contact Us</a></li>
+                </ul>
+            </div>
+          <div class="footer-col">
+            <h4>Events</h4>
+            <ul>
+              <li><a href="events.html">&rsaquo; Basketball</a></li>
+              <li><a href="events.html">&rsaquo; Volleyball</a></li>
+              <li><a href="events.html">&rsaquo; Footsal</a></li>
+              <li><a href="events.html">&rsaquo; Badminton</a></li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Contact</h4>
+            <ul>
+              <li><a href="#">&#128205; Cavite, Philippines</a></li>
+              <li><a href="tel:+639123456789">&#128222; +63 000 000 0000</a></li>
+              <li><a href="mailto:info@otm.ph">&#9993; info@otm.ph</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="container"><div class="footer-bottom"><span>&copy; 2026 Online Tournament Management. All rights reserved.</span><span>Powered by <strong>iTexMo</strong> SMS</span></div></div>
+  </footer>
+  <script src="js/main.js"></script>
+</body>
+</html>

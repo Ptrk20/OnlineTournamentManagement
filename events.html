@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Events — OTM</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="nav-brand">
+        <div class="brand-icon">&#127942;</div>
+        <div>
+          <span class="brand-name">OTM</span>
+          <span class="brand-sub">Tournament Management</span>
+        </div>
+      </a>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="events.html" class="active">Events</a></li>
+        <li><a href="news.html">News</a></li>
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="contact.html">Contact Us</a></li>
+        <li><a href="login.html" class="btn-login">Login</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Page Header -->
+  <div class="page-header">
+    <h1>&#127942; Events</h1>
+    <div class="breadcrumb">
+      <a href="index.html">Home</a>
+      <span class="sep">&#8250;</span>
+      <span>Events</span>
+    </div>
+  </div>
+
+  <section class="sports-selector-section">
+    <div class="container">
+      <div class="sports-options" id="sportsOptions"></div>
+    </div>
+  </section>
+
+  <!-- Events Content -->
+  <section class="section-pad">
+    <div class="container">
+      <div class="events-shell">
+        <div class="sports-top">
+          <div class="sports-view-actions">
+            <button class="view-btn active" type="button">Bracket</button>
+            <button class="view-btn" type="button" id="jumpScheduleBtn">Schedule</button>
+          </div>
+        </div>
+
+        <div class="bracket-filters">
+          <div class="gender-switch" id="genderSwitch">
+            <button type="button" data-gender="Mens" class="active">Mens</button>
+            <button type="button" data-gender="Womens">Womens</button>
+          </div>
+          <select id="eventFilter" class="bracket-select" aria-label="Filter by event"></select>
+          <select id="courseFilter" class="bracket-select" aria-label="Filter by course">
+            <option value="">All Courses</option>
+            <option>IT</option>
+            <option>CS</option>
+            <option>CRIM</option>
+            <option>HRM</option>
+            <option>BSM</option>
+            <option>BSEDUC</option>
+            <option>BSPSYCH</option>
+          </select>
+        </div>
+
+        <div class="bracket-board-wrap">
+          <div id="bracketBoard" class="bracket-board-scroll"></div>
+        </div>
+
+        <div class="schedule-wrap" id="schedulesSection">
+          <div class="schedule-card">
+            <h3>Schedules</h3>
+            <div id="scheduleList" class="schedule-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-main">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <div class="logo"><div class="icon">&#127942;</div> OTM</div>
+            <p>An online computer-based platform providing organizers with the tools to manage sporting events with SMS notification support.</p>
+          </div>
+          <div class="footer-col"><h4>Quick Links</h4><ul><li><a href="index.html">&rsaquo; Home</a></li><li><a href="events.html">&rsaquo; Events</a></li><li><a href="news.html">&rsaquo; News</a></li><li><a href="about.html">&rsaquo; About Us</a></li><li><a href="contact.html">&rsaquo; Contact Us</a></li></ul></div>
+          <div class="footer-col"><h4>Contact</h4><ul><li><a href="#">&#128205; Cavite, Philippines</a></li><li><a href="">&#128222; +63 000 000 0000</a></li><li><a href="mailto:info@otm.ph">&#9993; info@otm.ph</a></li></ul></div>
+        </div>
+      </div>
+    </div>
+    <div class="container"><div class="footer-bottom"><span>&copy; 2026 Online Tournament Management.</span><span>Powered by <strong>iTexMo</strong> SMS</span></div></div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

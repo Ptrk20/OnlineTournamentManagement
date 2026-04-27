@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Announcements — OTM Admin</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+</head>
+<body class="admin-body" id="adminAnnouncements">
+
+  <aside class="sidebar" id="adminSidebar">
+    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">OTM Admin</span><span class="sub">Tournament Management</span></div></div>
+    <div class="sidebar-user"><div class="avatar" data-user-initials>A</div><div><span class="u-name" data-user-name>Administrator</span><span class="u-role" data-user-role>Admin</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
+      <a href="events.html"><span class="nav-icon">&#127942;</span> Events</a>
+      <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
+      <a href="announcement.html" class="active"><span class="nav-icon">&#128276;</span> Announcements</a>
+      <div class="nav-label">Users</div>
+      <a href="register.html"><span class="nav-icon">&#128100;</span> Register User</a>
+      <a href="manage-users.html"><span class="nav-icon">&#128101;</span> Manage Users</a>
+      <div class="nav-label">Content</div>
+      <a href="about.html"><span class="nav-icon">&#128203;</span> About Us</a>
+      <a href="contact.html"><span class="nav-icon">&#128140;</span> Contact Messages</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../index.html"><span>&#127760;</span> View Website</a>
+      <a href="#" data-logout><span>&#128682;</span> Logout</a>
+    </div>
+  </aside>
+
+  <div class="admin-main" id="adminMain">
+    <header class="admin-topbar">
+      <div class="topbar-left">
+        <button class="topbar-toggle" id="sidebarToggle"><span></span><span></span><span></span></button>
+        <span class="page-title">Announcements</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-user"><div class="avatar" data-user-initials>A</div><div class="u-info"><span class="name" data-user-name>Administrator</span><span class="role" data-user-role>Admin</span></div></div>
+      </div>
+    </header>
+
+    <main class="admin-content">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128276;</span> Announcements</h3>
+          <button class="btn btn-primary" id="addAnnouncementBtn" style="font-size:.82rem;padding:8px 16px;">+ New Announcement</button>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>#</th><th>Announcement</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody id="announcementsTableBody"><tr><td colspan="4" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SMS Integration Card -->
+      <div class="admin-card" style="margin-top:24px;">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128241;</span> Blast SMS for Announcements</h3>
+          <span style="font-size:.78rem;color:#888;">Powered by iTexMo</span>
+        </div>
+        <div class="admin-card-body">
+          <div class="sms-box">
+            <h3>&#128241; Send Announcement via SMS</h3>
+            <p>Instantly notify all registered participants about this announcement.</p>
+            <form id="smsForm">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Message</label>
+                <textarea id="smsMessage" maxlength="160" rows="4" placeholder="Type announcement message..." style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.85rem;color:#fff;background:rgba(255,255,255,.1);resize:none;font-family:inherit;"></textarea>
+                <div class="sms-char-count" id="smsCharCount"><span>0</span> / 160</div>
+              </div>
+              <input type="hidden" id="smsMode" value="all" />
+              <button type="submit" class="btn btn-primary" style="width:200px;">&#128228; Blast to All Users</button>
+            </form>
+            <div id="smsResult" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Add/Edit Modal -->
+  <div class="modal-overlay" id="announcementModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>New Announcement</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="announcementId" />
+        <div class="admin-form-group" style="margin-bottom:16px;">
+          <label>Title <span style="color:red;">*</span></label>
+          <input type="text" id="announcementTitle" placeholder="Announcement title" />
+        </div>
+        <div class="admin-form-group">
+          <label>Message <span style="color:red;">*</span></label>
+          <textarea id="announcementMessage" rows="5" placeholder="Announcement content..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Cancel</button>
+        <button class="btn btn-primary" id="saveAnnouncementBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/admin.js"></script>
+  <script src="../js/sms-blaster.js"></script>
+</body>
+</html>

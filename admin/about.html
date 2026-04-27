@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About Us — OTM Admin</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+</head>
+<body class="admin-body">
+
+  <aside class="sidebar" id="adminSidebar">
+    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">OTM Admin</span><span class="sub">Tournament Management</span></div></div>
+    <div class="sidebar-user"><div class="avatar" data-user-initials>A</div><div><span class="u-name" data-user-name>Administrator</span><span class="u-role" data-user-role>Admin</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
+      <a href="events.html"><span class="nav-icon">&#127942;</span> Events</a>
+      <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
+      <a href="announcement.html"><span class="nav-icon">&#128276;</span> Announcements</a>
+      <div class="nav-label">Users</div>
+      <a href="register.html"><span class="nav-icon">&#128100;</span> Register User</a>
+      <a href="manage-users.html"><span class="nav-icon">&#128101;</span> Manage Users</a>
+      <div class="nav-label">Content</div>
+      <a href="about.html" class="active"><span class="nav-icon">&#128203;</span> About Us</a>
+      <a href="contact.html"><span class="nav-icon">&#128140;</span> Contact Messages</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../index.html"><span>&#127760;</span> View Website</a>
+      <a href="#" data-logout><span>&#128682;</span> Logout</a>
+    </div>
+  </aside>
+
+  <div class="admin-main" id="adminMain">
+    <header class="admin-topbar">
+      <div class="topbar-left">
+        <button class="topbar-toggle" id="sidebarToggle"><span></span><span></span><span></span></button>
+        <span class="page-title">Manage About Us</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-user"><div class="avatar" data-user-initials>A</div><div class="u-info"><span class="name" data-user-name>Administrator</span><span class="role" data-user-role>Admin</span></div></div>
+      </div>
+    </header>
+
+    <main class="admin-content">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+
+        <!-- Edit About Content -->
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <h3><span class="ch-icon">&#128203;</span> About Us Content</h3>
+          </div>
+          <div class="admin-card-body">
+            <form id="aboutForm">
+              <div class="admin-form-group" style="margin-bottom:16px;">
+                <label>Organization Name</label>
+                <input type="text" id="aboutOrgName" placeholder="Organization name" />
+              </div>
+              <div class="admin-form-group" style="margin-bottom:16px;">
+                <label>Tagline</label>
+                <input type="text" id="aboutTagline" placeholder="Short tagline or slogan" />
+              </div>
+              <div class="admin-form-group" style="margin-bottom:16px;">
+                <label>Description</label>
+                <textarea id="aboutDescription" rows="5" placeholder="Main about us text..."></textarea>
+              </div>
+              <div class="admin-form-group" style="margin-bottom:16px;">
+                <label>Mission</label>
+                <textarea id="aboutMission" rows="4" placeholder="Mission statement..."></textarea>
+              </div>
+              <div class="admin-form-group" style="margin-bottom:16px;">
+                <label>Vision</label>
+                <textarea id="aboutVision" rows="4" placeholder="Vision statement..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary">Save Changes &#10003;</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <h3><span class="ch-icon">&#128065;</span> Preview</h3>
+            <a href="../about.html" target="_blank" class="btn btn-dark" style="font-size:.8rem;padding:7px 14px;">&#127760; View Live</a>
+          </div>
+          <div class="admin-card-body">
+            <div id="aboutPreview" style="background:#f8f9fc;border-radius:10px;padding:20px;min-height:200px;">
+              <h3 id="previewName" style="color:#1a237e;margin-bottom:8px;">Online Tournament Management</h3>
+              <p id="previewTagline" style="color:#ff6f00;font-size:.85rem;font-weight:600;margin-bottom:12px;"></p>
+              <p id="previewDesc" style="color:#555;font-size:.88rem;line-height:1.7;margin-bottom:16px;"></p>
+              <div style="background:#fff;border-radius:8px;padding:14px;margin-bottom:10px;">
+                <h4 style="color:#1a237e;font-size:.88rem;margin-bottom:6px;">&#127919; Mission</h4>
+                <p id="previewMission" style="color:#666;font-size:.82rem;line-height:1.6;"></p>
+              </div>
+              <div style="background:#fff;border-radius:8px;padding:14px;">
+                <h4 style="color:#1a237e;font-size:.88rem;margin-bottom:6px;">&#128161; Vision</h4>
+                <p id="previewVision" style="color:#666;font-size:.82rem;line-height:1.6;"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Team Members -->
+      <div class="admin-card" style="margin-top:24px;">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128101;</span> Team Members</h3>
+          <button class="btn btn-primary" id="addMemberBtn" style="font-size:.82rem;padding:8px 16px;">+ Add Member</button>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>#</th><th>Name</th><th>Role/Title</th><th>Bio</th><th>Actions</th></tr></thead>
+            <tbody id="teamTableBody">
+              <tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;">No team members added yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/admin.js"></script>
+  <script>
+    const ABOUT_KEY = 'otm_about';
+
+    function loadAbout() {
+      const data = JSON.parse(localStorage.getItem(ABOUT_KEY)) || {};
+      document.getElementById('aboutOrgName').value    = data.orgName    || 'Online Tournament Management';
+      document.getElementById('aboutTagline').value    = data.tagline    || '';
+      document.getElementById('aboutDescription').value = data.description || '';
+      document.getElementById('aboutMission').value    = data.mission    || '';
+      document.getElementById('aboutVision').value     = data.vision     || '';
+      updatePreview();
+    }
+
+    function updatePreview() {
+      document.getElementById('previewName').textContent    = document.getElementById('aboutOrgName').value;
+      document.getElementById('previewTagline').textContent = document.getElementById('aboutTagline').value;
+      document.getElementById('previewDesc').textContent    = document.getElementById('aboutDescription').value;
+      document.getElementById('previewMission').textContent = document.getElementById('aboutMission').value;
+      document.getElementById('previewVision').textContent  = document.getElementById('aboutVision').value;
+    }
+
+    ['aboutOrgName','aboutTagline','aboutDescription','aboutMission','aboutVision'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updatePreview);
+    });
+
+    document.getElementById('aboutForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const data = {
+        orgName:     document.getElementById('aboutOrgName').value,
+        tagline:     document.getElementById('aboutTagline').value,
+        description: document.getElementById('aboutDescription').value,
+        mission:     document.getElementById('aboutMission').value,
+        vision:      document.getElementById('aboutVision').value,
+      };
+      localStorage.setItem(ABOUT_KEY, JSON.stringify(data));
+      if (typeof adminToast === 'function') adminToast('About Us content saved.');
+      else alert('Saved!');
+    });
+
+    document.addEventListener('DOMContentLoaded', loadAbout);
+  </script>
+</body>
+</html>

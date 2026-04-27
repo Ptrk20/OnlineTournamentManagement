@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — OTM</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+</head>
+<body class="admin-body" id="adminDashboard">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="adminSidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">&#127942;</div>
+      <div class="brand-text">
+        <span class="name">OTM Admin</span>
+        <span class="sub">Tournament Management</span>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="avatar" data-user-initials>A</div>
+      <div>
+        <span class="u-name" data-user-name>Administrator</span>
+        <span class="u-role" data-user-role>Admin</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="active"><span class="nav-icon">&#128200;</span> Dashboard</a>
+      <a href="events.html"><span class="nav-icon">&#127942;</span> Events</a>
+      <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
+      <a href="announcement.html"><span class="nav-icon">&#128276;</span> Announcements</a>
+      <div class="nav-label">Users</div>
+      <a href="register.html"><span class="nav-icon">&#128100;</span> Register User</a>
+      <a href="manage-users.html"><span class="nav-icon">&#128101;</span> Manage Users</a>
+      <div class="nav-label">Content</div>
+      <a href="about.html"><span class="nav-icon">&#128203;</span> About Us</a>
+      <a href="contact.html"><span class="nav-icon">&#128140;</span> Contact Messages <span class="nav-badge" id="msgBadge">0</span></a>
+      <div class="nav-label">Tools</div>
+      <a href="#sms" onclick="document.getElementById('smsSection').scrollIntoView({behavior:'smooth'});return false;"><span class="nav-icon">&#128241;</span> SMS Blaster</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../index.html"><span>&#127760;</span> View Website</a>
+      <a href="#" data-logout><span>&#128682;</span> Logout</a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="admin-main" id="adminMain">
+
+    <!-- Topbar -->
+    <header class="admin-topbar">
+      <div class="topbar-left">
+        <button class="topbar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+          <span></span><span></span><span></span>
+        </button>
+        <span class="page-title">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" title="Notifications"><span>&#128276;</span><span class="notif-dot"></span></button>
+        <div class="topbar-user">
+          <div class="avatar" data-user-initials>A</div>
+          <div class="u-info">
+            <span class="name" data-user-name>Administrator</span>
+            <span class="role" data-user-role>Admin</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="admin-content">
+
+      <!-- Stats Row -->
+      <div class="stats-row">
+        <div class="stat-widget">
+          <div class="sw-icon blue">&#127942;</div>
+          <div class="sw-info"><span class="value" id="stat-events">0</span><span class="label">Total Events</span><span class="change up">&#9650; Active this season</span></div>
+        </div>
+        <div class="stat-widget">
+          <div class="sw-icon orange">&#9917;</div>
+          <div class="sw-info"><span class="value" id="stat-ongoing">0</span><span class="label">Ongoing Events</span></div>
+        </div>
+        <div class="stat-widget">
+          <div class="sw-icon green">&#128200;</div>
+          <div class="sw-info"><span class="value" id="stat-upcoming">0</span><span class="label">Upcoming Events</span></div>
+        </div>
+        <div class="stat-widget">
+          <div class="sw-icon purple">&#128101;</div>
+          <div class="sw-info"><span class="value" id="stat-users">0</span><span class="label">Registered Users</span></div>
+        </div>
+        <div class="stat-widget">
+          <div class="sw-icon teal">&#128240;</div>
+          <div class="sw-info"><span class="value" id="stat-news">0</span><span class="label">News Articles</span></div>
+        </div>
+        <div class="stat-widget">
+          <div class="sw-icon red">&#128140;</div>
+          <div class="sw-info"><span class="value" id="stat-messages">0</span><span class="label">Unread Messages</span></div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <a href="events.html" class="quick-btn"><div class="q-icon">&#127942;</div><div class="q-label">Add Event</div></a>
+        <a href="news.html" class="quick-btn"><div class="q-icon">&#128240;</div><div class="q-label">Add News</div></a>
+        <a href="announcement.html" class="quick-btn"><div class="q-icon">&#128276;</div><div class="q-label">Announce</div></a>
+        <a href="register.html" class="quick-btn"><div class="q-icon">&#128100;</div><div class="q-label">Add User</div></a>
+        <a href="contact.html" class="quick-btn"><div class="q-icon">&#128140;</div><div class="q-label">Messages</div></a>
+        <button class="quick-btn" id="exportReportBtn"><div class="q-icon">&#128196;</div><div class="q-label">Export CSV</div></button>
+      </div>
+
+      <!-- Main Grid -->
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:24px;align-items:start;">
+
+        <!-- Recent Events -->
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <h3><span class="ch-icon">&#127942;</span> Recent Events</h3>
+            <a href="events.html" class="btn btn-dark" style="font-size:.8rem;padding:7px 14px;">Manage All</a>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Title</th><th>Date</th><th>Location</th><th>Teams</th><th>Status</th></tr></thead>
+              <tbody id="recentEventsTable"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Event Chart -->
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <h3><span class="ch-icon">&#128200;</span> Events Overview</h3>
+          </div>
+          <div class="admin-card-body">
+            <canvas id="eventChart" width="300" height="260"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SMS Blaster -->
+      <div id="smsSection" style="margin-top:24px;">
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <h3><span class="ch-icon">&#128241;</span> SMS Blaster</h3>
+            <span style="font-size:.78rem;color:#888;">Powered by iTexMo</span>
+          </div>
+          <div class="admin-card-body">
+            <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:28px;align-items:start;">
+              <div class="sms-box">
+                <h3>&#128241; Send SMS Notification</h3>
+                <p>Blast messages to participants instantly via iTexMo API.</p>
+                <form id="smsForm">
+                  <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Send To</label>
+                    <select id="smsMode" style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.88rem;color:#fff;background:rgba(255,255,255,.1);">
+                      <option value="manual">Manual Numbers</option>
+                      <option value="all">All Active Users</option>
+                    </select>
+                  </div>
+                  <div class="form-group" id="smsRecipientsGroup" style="margin-bottom:14px;">
+                    <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Recipients (one per line or comma-separated)</label>
+                    <textarea id="smsRecipients" rows="3" placeholder="09XXXXXXXXX&#10;09XXXXXXXXX" style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.85rem;color:#fff;background:rgba(255,255,255,.1);resize:none;font-family:inherit;"></textarea>
+                  </div>
+                  <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Message (max 160 chars)</label>
+                    <textarea id="smsMessage" rows="4" maxlength="160" placeholder="Type your SMS message here..." style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.85rem;color:#fff;background:rgba(255,255,255,.1);resize:none;font-family:inherit;"></textarea>
+                    <div class="sms-char-count" id="smsCharCount"><span>0</span> / 160</div>
+                  </div>
+                  <button type="submit" class="btn btn-primary" style="width:100%;">&#128228; Send SMS</button>
+                </form>
+                <div id="smsResult" style="display:none;"></div>
+              </div>
+              <div>
+                <h4 style="font-size:.9rem;color:#1a237e;margin-bottom:14px;">&#128203; SMS Log</h4>
+                <div id="smsLogList"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/admin.js"></script>
+  <script src="../js/sms-blaster.js"></script>
+  <script>
+    // Update unread messages badge
+    document.addEventListener('DOMContentLoaded', () => {
+      const msgs  = DataStore.getMessages().filter(m => !m.read).length;
+      const badge = document.getElementById('msgBadge');
+      if (badge) badge.textContent = msgs;
+      // Show/hide manual recipients based on mode
+      const modeEl = document.getElementById('smsMode');
+      const recpGrp = document.getElementById('smsRecipientsGroup');
+      if (modeEl && recpGrp) {
+        modeEl.addEventListener('change', () => {
+          recpGrp.style.display = modeEl.value === 'all' ? 'none' : '';
+        });
+      }
+    });
+  </script>
+</body>
+</html>

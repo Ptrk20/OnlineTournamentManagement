@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact Us — OTM</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="nav-brand">
+        <div class="brand-icon">&#127942;</div>
+        <div>
+          <span class="brand-name">OTM</span>
+          <span class="brand-sub">Tournament Management</span>
+        </div>
+      </a>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="news.html">News</a></li>
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="contact.html" class="active">Contact Us</a></li>
+        <li><a href="login.html" class="btn-login">Login</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="page-header">
+    <h1>&#128222; Contact Us</h1>
+    <div class="breadcrumb">
+      <a href="index.html">Home</a>
+      <span class="sep">&#8250;</span>
+      <span>Contact Us</span>
+    </div>
+  </div>
+
+  <section class="section-pad">
+    <div class="container">
+      <div class="contact-grid">
+
+        <!-- Contact Info -->
+        <div class="contact-info reveal">
+          <span class="sub" style="color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Get In Touch</span>
+          <h2>We'd Love to Hear From You</h2>
+          <p>Have questions about a tournament, need help with the platform, or want to partner with us? Send us a message and we'll get back to you promptly.</p>
+
+          <div class="contact-detail">
+            <div class="ci-icon">&#128205;</div>
+            <div>
+              <h4>Address</h4>
+              <p>123 Sports Avenue, Manila City<br>Philippines, 1000</p>
+            </div>
+          </div>
+          <div class="contact-detail">
+            <div class="ci-icon">&#128222;</div>
+            <div>
+              <h4>Phone</h4>
+              <p>+63 912 345 6789<br>+63 (02) 8-123-4567</p>
+            </div>
+          </div>
+          <div class="contact-detail">
+            <div class="ci-icon">&#9993;</div>
+            <div>
+              <h4>Email</h4>
+              <p>info@otm.ph<br>support@otm.ph</p>
+            </div>
+          </div>
+          <div class="contact-detail">
+            <div class="ci-icon">&#128336;</div>
+            <div>
+              <h4>Office Hours</h4>
+              <p>Mon–Fri: 8:00 AM – 5:00 PM<br>Sat: 9:00 AM – 12:00 PM</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact Form -->
+        <div class="contact-form-card reveal">
+          <h3>&#128140; Send a Message</h3>
+          <form id="contactForm" novalidate>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="c-name">Full Name <span style="color:red;">*</span></label>
+                <input type="text" id="c-name" name="name" placeholder="Your full name" required />
+                <span class="error-text" id="c-name-error"></span>
+              </div>
+              <div class="form-group">
+                <label for="c-email">Email Address <span style="color:red;">*</span></label>
+                <input type="email" id="c-email" name="email" placeholder="your@email.com" required />
+                <span class="error-text" id="c-email-error"></span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="c-subject">Subject <span style="color:red;">*</span></label>
+              <input type="text" id="c-subject" name="subject" placeholder="Message subject" required />
+              <span class="error-text" id="c-subject-error"></span>
+            </div>
+            <div class="form-group">
+              <label for="c-message">Message <span style="color:red;">*</span></label>
+              <textarea id="c-message" name="message" placeholder="Write your message here..." required></textarea>
+              <span class="error-text" id="c-message-error"></span>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:14px;">Send Message &#9993;</button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Map Placeholder -->
+  <section style="background:#fff;padding:0 0 80px;">
+    <div class="container">
+      <div style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:16px;height:300px;display:flex;align-items:center;justify-content:center;color:#fff;flex-direction:column;gap:10px;" class="reveal">
+        <div style="font-size:3rem;">&#128205;</div>
+        <h3>123 Sports Avenue, Manila City, Philippines</h3>
+        <p style="opacity:.8;font-size:.9rem;">Interactive map integration available with Google Maps API key</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-main">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <div class="logo"><div class="icon">&#127942;</div> OTM</div>
+            <p>An online computer-based platform for tournament management with SMS support.</p>
+          </div>
+          <div class="footer-col"><h4>Quick Links</h4><ul><li><a href="index.html">&rsaquo; Home</a></li><li><a href="events.html">&rsaquo; Events</a></li><li><a href="news.html">&rsaquo; News</a></li><li><a href="about.html">&rsaquo; About Us</a></li><li><a href="contact.html">&rsaquo; Contact Us</a></li></ul></div>
+          <div class="footer-col"><h4>Contact</h4><ul><li><a href="#">&#128205; Cavite, Philippines</a></li><li><a href="tel:+639123456789">&#128222; +63 000 000 0000</a></li><li><a href="mailto:info@otm.ph">&#9993; info@otm.ph</a></li></ul></div>
+        </div>
+      </div>
+    </div>
+    <div class="container"><div class="footer-bottom"><span>&copy; 2026 Online Tournament Management.</span><span>Powered by <strong>iTexMo</strong> SMS</span></div></div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
