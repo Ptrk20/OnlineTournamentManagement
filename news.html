@@ -24,7 +24,7 @@
         <li><a href="news.html" class="active">News</a></li>
         <li><a href="about.html">About Us</a></li>
         <li><a href="contact.html">Contact Us</a></li>
-        <li><a href="login.html" class="btn-login">Login</a></li>
+        <li><a href="login.html">&#128100; Login</a></li>
       </ul>
     </div>
   </nav>
@@ -40,39 +40,82 @@
 
   <section class="section-pad">
     <div class="container">
+      <div class="news-dashboard-grid">
+        <article class="news-panel">
+          <div class="news-panel-head">
+            <h3>&#127909; Tournament Highlights</h3>
+          </div>
+          <div id="highlightsGallery" class="highlights-gallery">
+            <div class="spinner"></div>
+          </div>
+        </article>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:32px;">
-        <div class="search-bar" style="margin:0;">
-          <input type="text" id="newsSearch" placeholder="Search news..." />
-          <button type="button">&#128269;</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-dark cat-filter active" data-cat="">All</button>
-          <button class="btn" style="background:#fff;border:1.5px solid #e0e0e0;color:#333;" class="cat-filter" data-cat="Announcement">Announcements</button>
-          <button class="btn" style="background:#fff;border:1.5px solid #e0e0e0;color:#333;" class="cat-filter" data-cat="Events">Events</button>
-          <button class="btn" style="background:#fff;border:1.5px solid #e0e0e0;color:#333;" class="cat-filter" data-cat="Highlights">Highlights</button>
-        </div>
+        <article class="news-panel">
+          <div class="news-panel-head">
+            <h3>&#129351; Medal Standings</h3>
+          </div>
+          <div class="news-standings-card">
+            <div class="news-standings-header">
+              <span class="news-live-indicator"><span class="dot"></span>LIVE</span>
+            </div>
+
+            <div class="standings-icons-row">
+              <div style="text-align:left;">Course</div>
+              <div title="Volleyball">&#127952;</div>
+              <div title="Basketball">&#127936;</div>
+              <div title="Futsal">&#9917;</div>
+              <div title="Badminton">&#127992;</div>
+              <div>&#129351;</div>
+              <div>&#129352;</div>
+              <div>&#129353;</div>
+            </div>
+
+            <div class="standings-labels-row">
+              <div></div>
+              <div>VOL</div>
+              <div>BBL</div>
+              <div>FUT</div>
+              <div>BAD</div>
+              <div class="label-gold">G</div>
+              <div class="label-silver">S</div>
+              <div class="label-bronze">B</div>
+            </div>
+
+            <div id="newsStandingsBody"></div>
+            <div class="news-standings-footer">Last updated: <span id="newsStandingsUpdated">just now</span></div>
+          </div>
+        </article>
+
+        <article class="news-panel">
+          <div class="news-panel-head">
+            <h3>&#128276; Winner Announcements</h3>
+          </div>
+          <div id="winnersAnnouncementList" class="winners-list"></div>
+        </article>
+
+        <article class="news-panel">
+          <div class="news-panel-head">
+            <h3>&#127942; Course Leaderboards</h3>
+          </div>
+          <div class="leaderboard-sport-filters" id="leaderboardSportFilters">
+            <button type="button" class="sport-filter-icon active" data-sport="vol" aria-label="Volleyball">
+              <img src="src/images/volleyball.png" alt="Volleyball" />
+            </button>
+            <button type="button" class="sport-filter-icon" data-sport="bbl" aria-label="Basketball">
+              <img src="src/images/basketball.png" alt="Basketball" />
+            </button>
+            <button type="button" class="sport-filter-icon" data-sport="fut" aria-label="Futsal">
+              <img src="src/images/futsal.png" alt="Futsal" />
+            </button>
+            <button type="button" class="sport-filter-icon" data-sport="bad" aria-label="Badminton">
+              <img src="src/images/shuttlecock.png" alt="Badminton" />
+            </button>
+          </div>
+          <div id="sportLeaderboardList" class="sport-leaderboard-list"></div>
+        </article>
       </div>
-
-      <div class="news-grid" id="news-list">
-        <div class="spinner"></div>
-      </div>
-
-      <div class="pagination" id="newsPagination"></div>
-
     </div>
   </section>
-
-  <!-- News Detail Modal -->
-  <div id="newsDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);">
-      <div style="padding:20px 24px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;">
-        <h3 id="newsModalTitle" style="color:#1a237e;font-size:1rem;"></h3>
-        <button onclick="closeNewsModal()" style="background:#f0f2f5;border:none;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:1rem;">&times;</button>
-      </div>
-      <div id="newsModalBody" style="padding:24px;"></div>
-    </div>
-  </div>
 
   <footer class="footer">
     <div class="footer-main">
@@ -80,7 +123,7 @@
         <div class="footer-grid">
           <div class="footer-brand">
             <div class="logo"><div class="icon">&#127942;</div> OTM</div>
-            <p>An online computer-based platform for tournament management with SMS support.</p>
+            <p>An online computer-based platform providing organizers with the tools to organize, evaluate, and efficiently manage sporting events with SMS notification support.</p>
           </div>
           <div class="footer-col"><h4>Quick Links</h4><ul><li><a href="index.html">&rsaquo; Home</a></li><li><a href="events.html">&rsaquo; Events</a></li><li><a href="news.html">&rsaquo; News</a></li><li><a href="about.html">&rsaquo; About Us</a></li><li><a href="contact.html">&rsaquo; Contact Us</a></li></ul></div>
           <div class="footer-col"><h4>Contact</h4><ul><li><a href="#">&#128205; Cavite, Philippines</a></li><li><a href="tel:+639123456789">&#128222; +63 000 000 0000</a></li><li><a href="mailto:info@otm.ph">&#9993; info@otm.ph</a></li></ul></div>
@@ -91,75 +134,5 @@
   </footer>
 
   <script src="js/main.js"></script>
-  <script>
-    (function(){
-      const grid   = document.getElementById('news-list');
-      const search = document.getElementById('newsSearch');
-      let activeCat = '';
-
-      function defaultNews() {
-        return [
-          {id:'n1',title:'OTM Platform Launches SMS Blaster Feature',category:'Announcement',excerpt:'The new SMS Blaster powered by iTexMo allows organizers to notify participants instantly.',content:'Full story: The iTexMo-powered SMS Blaster is now live. Organizers can send bulk SMS to all registered participants with a single click from the admin dashboard.',date:'Apr 20, 2026'},
-          {id:'n2',title:'National Basketball Championship Opens Registration',category:'Events',excerpt:'Registration for the upcoming National Basketball Championship is now open. Teams can sign up before May 30.',content:'Teams interested in joining the National Basketball Championship 2026 must register before May 30, 2026. Visit the Events page for more details.',date:'Apr 15, 2026'},
-          {id:'n3',title:'Top 10 Teams to Watch This Season',category:'Highlights',excerpt:'Our analysts pick the top 10 teams expected to dominate this year.',content:'Based on last season\'s performance and new rosters, here are the top 10 teams expected to make it to the finals this tournament season.',date:'Apr 10, 2026'},
-          {id:'n4',title:'New Badminton Category Added for 2026',category:'Events',excerpt:'OTM adds a new mixed doubles category for the Badminton Open Championship.',content:'Due to popular demand, a new mixed doubles category has been added to the Badminton Open Championship 2026.',date:'Apr 5, 2026'},
-          {id:'n5',title:'OTM Partners with Local Sports Federation',category:'Announcement',excerpt:'OTM signs partnership agreement with the Local Sports Federation to digitize event records.',content:'The partnership aims to automate event records, scheduling, and result publishing across all federation-recognized tournaments.',date:'Mar 30, 2026'},
-          {id:'n6',title:'Volleyball Season Highlights — March 2026',category:'Highlights',excerpt:'Catch up on all the top moments from the Regional Volleyball League\'s March fixtures.',content:'The March fixtures delivered exciting matches with several upsets and record-breaking performances from the youth division.',date:'Mar 25, 2026'},
-        ];
-      }
-
-      function render(news) {
-        if (!news.length) { grid.innerHTML = '<p style="color:#aaa;text-align:center;padding:40px;grid-column:1/-1;">No articles found.</p>'; return; }
-        grid.innerHTML = news.map(n => `
-          <div class="news-card reveal">
-            <div class="news-img">&#128240;</div>
-            <div class="news-body">
-              <div class="news-category">${n.category}</div>
-              <h3>${n.title}</h3>
-              <p>${n.excerpt}</p>
-              <div class="news-meta">
-                <span>&#128197; ${n.date}</span>
-                <a href="#" style="color:#ff6f00;font-weight:600;" onclick="showNews('${n.id}');return false;">Read more &rarr;</a>
-              </div>
-            </div>
-          </div>`).join('');
-      }
-
-      function applyFilters() {
-        const q = (search.value || '').toLowerCase();
-        const news = (JSON.parse(localStorage.getItem('otm_news')) || defaultNews())
-          .filter(n => (!q || n.title.toLowerCase().includes(q)) && (!activeCat || n.category === activeCat));
-        render(news);
-      }
-
-      window.showNews = function(id) {
-        const n = (JSON.parse(localStorage.getItem('otm_news')) || defaultNews()).find(x => x.id === id);
-        if (!n) return;
-        document.getElementById('newsModalTitle').textContent = n.title;
-        document.getElementById('newsModalBody').innerHTML = `
-          <div class="news-category" style="margin-bottom:10px;">${n.category}</div>
-          <p style="color:#888;font-size:.82rem;margin-bottom:16px;">&#128197; ${n.date}</p>
-          <p style="line-height:1.8;color:#444;">${n.content || n.excerpt}</p>`;
-        const m = document.getElementById('newsDetailModal');
-        m.style.display = 'flex';
-      };
-
-      window.closeNewsModal = function() {
-        document.getElementById('newsDetailModal').style.display = 'none';
-      };
-
-      document.querySelectorAll('.cat-filter').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.cat-filter').forEach(b => { b.classList.remove('active'); b.style.background='#fff'; b.style.color='#333'; });
-          btn.classList.add('active'); btn.style.background='#1a237e'; btn.style.color='#fff';
-          activeCat = btn.dataset.cat;
-          applyFilters();
-        });
-      });
-
-      search.addEventListener('input', applyFilters);
-      applyFilters();
-    })();
-  </script>
 </body>
 </html>

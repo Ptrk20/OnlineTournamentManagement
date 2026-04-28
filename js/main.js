@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAnnouncementClose();
   loadPublicEvents();
   loadPublicNews();
+  initNewsPage();
 });
 
 /* =============================================
@@ -306,6 +307,232 @@ function renderNewsCard(n) {
   `;
 }
 
+function initNewsPage() {
+  const gallery = document.getElementById('highlightsGallery');
+  const tallyBody = document.getElementById('newsStandingsBody');
+  const tallyUpdated = document.getElementById('newsStandingsUpdated');
+  const winnersList = document.getElementById('winnersAnnouncementList');
+  const leaderboardList = document.getElementById('sportLeaderboardList');
+  const leaderboardFilters = document.getElementById('leaderboardSportFilters');
+
+  if (!gallery || !tallyBody || !winnersList || !leaderboardList || !leaderboardFilters) return;
+
+  const STANDINGS_KEY = 'otm_sportsfest_standings';
+  const state = { sport: 'vol' };
+
+  const defaultStandings = [
+    { course: 'IT',      vol: 'G', bbl: 'S', fut: '-', bad: 'G',  g: 2, s: 1, b: 0 },
+    { course: 'CS',      vol: 'S', bbl: 'G', fut: 'B', bad: '-',  g: 1, s: 1, b: 1 },
+    { course: 'Crim',    vol: '-', bbl: 'B', fut: 'G', bad: 'S',  g: 1, s: 1, b: 1 },
+    { course: 'HRM',     vol: 'B', bbl: '-', fut: 'S', bad: 'B',  g: 0, s: 1, b: 2 },
+    { course: 'BSM',     vol: '-', bbl: '-', fut: '-', bad: 'B',  g: 0, s: 0, b: 1 },
+    { course: 'BSEDUC',  vol: '-', bbl: '-', fut: '-', bad: '-',  g: 0, s: 0, b: 0 },
+    { course: 'BSPSYCH', vol: '-', bbl: '-', fut: '-', bad: '-',  g: 0, s: 0, b: 0 },
+  ];
+
+  function getStandings() {
+    try {
+      return JSON.parse(localStorage.getItem(STANDINGS_KEY)) || defaultStandings;
+    } catch {
+      return defaultStandings;
+    }
+  }
+
+  function sortOverall(data) {
+    return [...data].sort(function (a, b) {
+      return b.g !== a.g ? b.g - a.g : b.s !== a.s ? b.s - a.s : b.b - a.b;
+    });
+  }
+
+  function getSportValuePoints(val) {
+    if (val === 'G') return 3;
+    if (val === 'S') return 2;
+    if (val === 'B') return 1;
+    return 0;
+  }
+
+  function medalTag(val) {
+    if (val === 'G') return '<span class="sport-result" style="background:rgba(255,215,0,.2);color:gold;">G</span>';
+    if (val === 'S') return '<span class="sport-result" style="background:rgba(180,180,180,.18);color:#6e7788;">S</span>';
+    if (val === 'B') return '<span class="sport-result" style="background:rgba(205,127,50,.2);color:#cd7f32;">B</span>';
+    return '<span class="sport-result" style="color:#a6b1c8;">&#8212;</span>';
+  }
+
+  function rankBadge(rank) {
+    const styles = {
+      1: 'background:gold;color:#333;',
+      2: 'background:#aaa;color:#111;',
+      3: 'background:#cd7f32;color:#fff;',
+    };
+    const style = styles[rank] || 'background:#e8eefb;color:#3d4a6d;';
+    return '<span class="rank-badge" style="' + style + '">' + rank + '</span>';
+  }
+
+  function rowClass(rank) {
+    if (rank === 1) return 'standing-row top-1';
+    if (rank === 2) return 'standing-row top-2';
+    if (rank === 3) return 'standing-row top-3';
+    return 'standing-row';
+  }
+
+  function medalCell(val) {
+    if (val === 'G') return '<span class="news-medal sport-g">G</span>';
+    if (val === 'S') return '<span class="news-medal sport-s">S</span>';
+    if (val === 'B') return '<span class="news-medal sport-b">B</span>';
+    return '<span class="news-medal sport-n">-</span>';
+  }
+
+  function getHighlights() {
+    try {
+      const stored = JSON.parse(localStorage.getItem('otm_gallery')) || [];
+      if (Array.isArray(stored) && stored.length) return stored;
+    } catch {
+      // ignore and use fallback
+    }
+
+    return [
+      { src: 'src/images/vb-random.jpg', title: 'Volleyball Finals', caption: 'Crowd-favorite championship match' },
+      { src: 'src/images/bb-random.jpg', title: 'Basketball Semis', caption: 'Fast-break highlights and buzzer plays' },
+      { src: 'src/images/fs-random.jpg', title: 'Futsal Knockouts', caption: 'Back-to-back goals in the final minutes' },
+      { src: 'src/images/bd-random.jpg', title: 'Badminton Open', caption: 'Singles and doubles winners take the podium' },
+    ];
+  }
+
+  function renderHighlights() {
+    const items = getHighlights();
+    gallery.innerHTML = items.map(function (item) {
+      return '<figure class="highlight-card">' +
+        '<img src="' + escapeHTML(item.src || '') + '" alt="' + escapeHTML(item.title || 'Highlight') + '" />' +
+        '<figcaption><strong>' + escapeHTML(item.title || 'Highlight') + '</strong><span>' + escapeHTML(item.caption || '') + '</span></figcaption>' +
+      '</figure>';
+    }).join('');
+  }
+
+  function renderTally() {
+    const sorted = sortOverall(getStandings());
+    tallyBody.innerHTML = sorted.map(function (row, i) {
+      const rank = i + 1;
+      return '<div class="' + rowClass(rank) + '">' +
+        '<div style="display:flex;align-items:center;color:#26325e;font-weight:700;">' +
+          rankBadge(rank) +
+          '<span style="font-size:.85rem;">' + escapeHTML(row.course) + '</span>' +
+        '</div>' +
+        '<div>' + medalTag(row.vol) + '</div>' +
+        '<div>' + medalTag(row.bbl) + '</div>' +
+        '<div>' + medalTag(row.fut) + '</div>' +
+        '<div>' + medalTag(row.bad) + '</div>' +
+        '<div class="medal-count medal-gold">' + row.g + '</div>' +
+        '<div class="medal-count medal-silver">' + row.s + '</div>' +
+        '<div class="medal-count medal-bronze">' + row.b + '</div>' +
+      '</div>';
+    }).join('');
+
+    if (tallyUpdated) {
+      tallyUpdated.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+
+  function getWinnerAnnouncements() {
+    let items = [];
+
+    try {
+      const stored = JSON.parse(localStorage.getItem('otm_winner_announcements')) || [];
+      if (Array.isArray(stored) && stored.length) {
+        items = stored;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!items.length) {
+      const announcements = DataStore.getAnnouncements();
+      items = announcements
+        .filter(function (a) {
+          const text = (a.title || '') + ' ' + (a.message || a.content || '');
+          return /winner|champion|championship/i.test(text);
+        })
+        .map(function (a) {
+          return {
+            title: a.title || 'Winner Announcement',
+            winner: a.winner || 'TBA',
+            sport: a.sport || 'General',
+            date: a.date || '',
+            smsStatus: 'Sent'
+          };
+        });
+    }
+
+    if (!items.length) {
+      items = [
+        { title: 'Volleyball Championship Winner', winner: 'IT', sport: 'Volleyball', date: 'Apr 28, 2026', smsStatus: 'Sent' },
+        { title: 'Basketball Tournament Winner', winner: 'CS', sport: 'Basketball', date: 'Apr 29, 2026', smsStatus: 'Sent' },
+        { title: 'Futsal Cup Winner', winner: 'Crim', sport: 'Futsal', date: 'Apr 30, 2026', smsStatus: 'Queued' },
+      ];
+    }
+
+    return items;
+  }
+
+  function renderWinnerAnnouncements() {
+    const items = getWinnerAnnouncements();
+    winnersList.innerHTML = items.map(function (item) {
+      const smsClass = String(item.smsStatus || '').toLowerCase() === 'sent' ? 'sent' : 'queued';
+      return '<div class="winner-item">' +
+        '<h4>' + escapeHTML(item.title || 'Winner Announcement') + '</h4>' +
+        '<p><strong>Winner:</strong> ' + escapeHTML(item.winner || 'TBA') + ' <span class="dot">•</span> <strong>Sport:</strong> ' + escapeHTML(item.sport || 'General') + '</p>' +
+        '<div class="winner-meta"><span>' + escapeHTML(item.date || '') + '</span><span class="sms-pill ' + smsClass + '">SMS ' + escapeHTML(item.smsStatus || 'Queued') + '</span></div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderSportLeaderboard() {
+    const rows = getStandings().map(function (row) {
+      const medal = row[state.sport];
+      const points = getSportValuePoints(medal);
+      return {
+        course: row.course,
+        medal: medal,
+        points: points,
+        placed: points > 0  // True if course has a medal in this sport
+      };
+    }).sort(function (a, b) {
+      return b.points - a.points || a.course.localeCompare(b.course);
+    });
+
+    leaderboardList.innerHTML = rows.map(function (row, idx) {
+      // Only show medal emoji for placers, empty for non-placers
+      let medalDisplay = '';
+      if (row.placed) {
+        // Show medal emoji based on medal type
+        if (row.medal === 'G') medalDisplay = '&#129351;';  // Gold medal
+        else if (row.medal === 'S') medalDisplay = '&#129352;';  // Silver medal
+        else if (row.medal === 'B') medalDisplay = '&#129353;';  // Bronze medal
+      }
+      
+      return '<div class="leaderboard-row">' +
+        '<div class="leaderboard-course">' + escapeHTML(row.course) + '</div>' +
+        '<div class="leaderboard-medal">' + medalDisplay + '</div>' +
+      '</div>';
+    }).join('');
+
+    leaderboardFilters.querySelectorAll('[data-sport]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-sport') === state.sport);
+    });
+  }
+
+  leaderboardFilters.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-sport]');
+    if (!btn) return;
+    state.sport = btn.getAttribute('data-sport');
+    renderSportLeaderboard();
+  });
+
+  renderHighlights();
+  renderTally();
+  renderWinnerAnnouncements();
+  renderSportLeaderboard();
+}
+
 /* =============================================
    9. HELPER FUNCTIONS
    ============================================= */
@@ -432,7 +659,7 @@ const Auth = {
 
 // Update nav login button if user is logged in
 (function updateNavAuth() {
-  const btn = document.querySelector('.btn-login');
+  const btn = document.querySelector('.btn-login') || document.querySelector('.nav-menu a[href="login.html"]');
   if (!btn) return;
   if (Auth.isLoggedIn()) {
     btn.textContent = 'Dashboard';
@@ -620,7 +847,8 @@ const Auth = {
           },
           schedule: [
             { datetime: 'Apr 28, 2026 03:00 PM', match: 'IT vs CS', venue: 'Sports Center', status: 'Ongoing' },
-            { datetime: 'Apr 29, 2026 03:00 PM', match: 'CRIM vs CS', venue: 'Sports Center', status: 'Upcoming' }
+            { datetime: 'Apr 29, 2026 03:00 PM', match: 'CRIM vs CS', venue: 'Sports Center', status: 'Upcoming' },
+            { datetime: 'May 1, 2026 03:00 PM', match: 'CRIM vs HRM', venue: 'Sports Center', status: 'Upcoming' }
           ]
         }
       ]
@@ -691,11 +919,22 @@ const Auth = {
     const courseFilter = document.getElementById('courseFilter');
     const bracketBoard = document.getElementById('bracketBoard');
     const scheduleList = document.getElementById('scheduleList');
+    const scheduleViewToggle = document.getElementById('scheduleViewToggle');
+    const scheduleViewList = document.getElementById('scheduleViewList');
+    const scheduleViewCalendar = document.getElementById('scheduleViewCalendar');
     const jumpScheduleBtn = document.getElementById('jumpScheduleBtn');
 
     if (!sportsOptions) return;
 
-    const state = { sportId: sports[0].id, gender: 'Mens', eventId: null, course: '' };
+    const state = {
+      sportId: sports[0].id,
+      gender: 'Mens',
+      eventId: null,
+      course: '',
+      scheduleView: 'list',
+      calendarYear: null,
+      calendarMonth: null
+    };
     const sportImageById = {
       volleyball: 'src/images/volleyball.png',
       basketball: 'src/images/basketball.png',
@@ -826,18 +1065,20 @@ const Auth = {
       renderSchedule();
     }
 
-    function renderSchedule() {
-      var ev = getCurrentEvent();
-      var schedule = (ev.schedule || []).filter(function (item) {
-        if (!state.course) return true;
-        return item.match.indexOf(state.course) !== -1;
-      });
+    function parseScheduleDate(dateString) {
+      var parsed = new Date(dateString);
+      if (isNaN(parsed.getTime())) return null;
+      return parsed;
+    }
 
-      if (!schedule.length) {
-        scheduleList.innerHTML = '<div class="empty-state">No schedules for this filter.</div>';
-        return;
-      }
+    function renderScheduleViewButtons() {
+      if (!scheduleViewToggle) return;
+      scheduleViewList.classList.toggle('active', state.scheduleView === 'list');
+      scheduleViewCalendar.classList.toggle('active', state.scheduleView === 'calendar');
+    }
 
+    function renderScheduleList(schedule) {
+      scheduleList.className = 'schedule-list';
       scheduleList.innerHTML = schedule.map(function (item) {
         var live = item.status === 'Ongoing';
         return '<div class="schedule-item">' +
@@ -845,6 +1086,106 @@ const Auth = {
           '<div><strong>' + item.match + '</strong><div class="schedule-meta">' + item.venue + '</div></div>' +
           '<span class="schedule-status' + (live ? ' live' : '') + '">' + item.status + '</span></div>';
       }).join('');
+    }
+
+    function renderScheduleCalendar(schedule) {
+      var parsedEntries = schedule.map(function (item) {
+        return { item: item, date: parseScheduleDate(item.datetime) };
+      }).filter(function (entry) {
+        return entry.date !== null;
+      });
+
+      if (!parsedEntries.length) {
+        scheduleList.className = 'schedule-list';
+        scheduleList.innerHTML = '<div class="empty-state">No valid schedule dates to display in calendar view.</div>';
+        return;
+      }
+
+      if (state.calendarYear === null || state.calendarMonth === null) {
+        var initialDate = parsedEntries[0].date;
+        state.calendarYear = initialDate.getFullYear();
+        state.calendarMonth = initialDate.getMonth();
+      }
+
+      var year = state.calendarYear;
+      var month = state.calendarMonth;
+      var firstDay = new Date(year, month, 1);
+      var startOffset = firstDay.getDay();
+      var daysInMonth = new Date(year, month + 1, 0).getDate();
+      var monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+      var eventsByDay = {};
+      parsedEntries.forEach(function (entry) {
+        if (entry.date.getFullYear() !== year || entry.date.getMonth() !== month) return;
+        var day = entry.date.getDate();
+        if (!eventsByDay[day]) eventsByDay[day] = [];
+        eventsByDay[day].push(entry);
+      });
+
+      var html = '<div class="schedule-calendar">' +
+        '<div class="calendar-header">' +
+          '<button type="button" class="calendar-nav-btn" data-calendar-nav="prev" aria-label="Previous month">&#8249;</button>' +
+          '<span class="calendar-month-label">' + monthLabel + '</span>' +
+          '<button type="button" class="calendar-nav-btn" data-calendar-nav="next" aria-label="Next month">&#8250;</button>' +
+        '</div>' +
+        '<div class="calendar-weekdays">' +
+          '<span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>' +
+        '</div><div class="calendar-grid">';
+
+      for (var blank = 0; blank < startOffset; blank += 1) {
+        html += '<div class="calendar-cell empty"></div>';
+      }
+
+      for (var dayNum = 1; dayNum <= daysInMonth; dayNum += 1) {
+        var dayEvents = eventsByDay[dayNum] || [];
+        html += '<div class="calendar-cell">';
+        html += '<div class="calendar-day">' + dayNum + '</div>';
+
+        if (!dayEvents.length) {
+          html += '<div class="calendar-no-events">No games</div>';
+        } else {
+          html += '<div class="calendar-events">';
+          dayEvents.slice(0, 3).forEach(function (entry) {
+            var item = entry.item;
+            var timeLabel = entry.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            html += '<div class="calendar-event">' +
+              '<strong>' + timeLabel + '</strong><span>' + item.match + '</span>' +
+            '</div>';
+          });
+          if (dayEvents.length > 3) {
+            html += '<div class="calendar-more">+' + (dayEvents.length - 3) + ' more</div>';
+          }
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      html += '</div></div>';
+      scheduleList.className = 'schedule-list schedule-list-calendar';
+      scheduleList.innerHTML = html;
+    }
+
+    function renderSchedule() {
+      var ev = getCurrentEvent();
+      var schedule = (ev.schedule || []).filter(function (item) {
+        if (!state.course) return true;
+        return item.match.indexOf(state.course) !== -1;
+      });
+
+      renderScheduleViewButtons();
+
+      if (!schedule.length) {
+        scheduleList.className = 'schedule-list';
+        scheduleList.innerHTML = '<div class="empty-state">No schedules for this filter.</div>';
+        return;
+      }
+
+      if (state.scheduleView === 'calendar') {
+        renderScheduleCalendar(schedule);
+      } else {
+        renderScheduleList(schedule);
+      }
     }
 
     function renderAll() { renderSports(); renderEventOptions(); renderBracket(); }
@@ -869,6 +1210,47 @@ const Auth = {
 
     eventFilter.addEventListener('change', function () { state.eventId = eventFilter.value; renderBracket(); });
     courseFilter.addEventListener('change', function () { state.course = courseFilter.value; renderBracket(); });
+    if (scheduleViewToggle) {
+      scheduleViewToggle.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-view]');
+        if (!btn) return;
+        state.scheduleView = btn.getAttribute('data-view');
+        if (state.scheduleView === 'calendar' && (state.calendarYear === null || state.calendarMonth === null)) {
+          var currentDate = new Date();
+          state.calendarYear = currentDate.getFullYear();
+          state.calendarMonth = currentDate.getMonth();
+        }
+        renderSchedule();
+      });
+    }
+
+    scheduleList.addEventListener('click', function (e) {
+      var navBtn = e.target.closest('[data-calendar-nav]');
+      if (!navBtn) return;
+
+      if (state.calendarYear === null || state.calendarMonth === null) {
+        var now = new Date();
+        state.calendarYear = now.getFullYear();
+        state.calendarMonth = now.getMonth();
+      }
+
+      if (navBtn.getAttribute('data-calendar-nav') === 'prev') {
+        state.calendarMonth -= 1;
+      } else {
+        state.calendarMonth += 1;
+      }
+
+      if (state.calendarMonth < 0) {
+        state.calendarMonth = 11;
+        state.calendarYear -= 1;
+      }
+      if (state.calendarMonth > 11) {
+        state.calendarMonth = 0;
+        state.calendarYear += 1;
+      }
+
+      renderSchedule();
+    });
     if (jumpScheduleBtn) {
       jumpScheduleBtn.addEventListener('click', function () {
         document.getElementById('schedulesSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
