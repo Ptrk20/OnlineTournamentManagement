@@ -433,7 +433,12 @@ function initUserManager() {
   renderUsersTable();
 
   const addBtn  = document.getElementById('addUserBtn');
-  if (addBtn) addBtn.addEventListener('click', () => { clearUserForm(); openModal('userModal'); });
+  if (addBtn) addBtn.addEventListener('click', () => {
+    clearUserForm();
+    const userNameLabel = document.querySelector('label[for="userName"]') || document.querySelector('#userName')?.closest('.admin-form-group')?.querySelector('label');
+    if (userNameLabel) userNameLabel.textContent = 'Full Name';
+    openModal('userModal');
+  });
 
   const saveBtn = document.getElementById('saveUserBtn');
   if (saveBtn) saveBtn.addEventListener('click', saveUser);
@@ -442,47 +447,50 @@ function initUserManager() {
   if (search) search.addEventListener('input', () => renderUsersTable(search.value));
 }
 
-function renderUsersTable(filter = '') {
+async function renderUsersTable(filter = '') {
   const tbody = document.getElementById('usersTableBody');
   if (!tbody) return;
 
-  const users = AuthModule.getUsers().filter(u =>
-    !filter ||
-    u.name.toLowerCase().includes(filter.toLowerCase()) ||
-    u.username.toLowerCase().includes(filter.toLowerCase())
-  );
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">Loading users...</td></tr>';
 
-  if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">No users found.</td></tr>';
-    return;
-  }
+  try {
+    const users = await fetchUsersFromApi(filter);
 
-  tbody.innerHTML = users.map((u, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>
-        <div class="user-cell">
-          <div class="user-avatar">${getInitialsAdmin(u.name)}</div>
-          <div>
-            <div class="user-name">${escapeAdminHTML(u.name)}</div>
-            <div class="user-email">${escapeAdminHTML(u.email)}</div>
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">No users found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = users.map((u, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>
+          <div class="user-cell">
+            <div class="user-avatar">${getInitialsAdmin(u.full_name)}</div>
+            <div>
+              <div class="user-name">${escapeAdminHTML(u.full_name)}</div>
+              <div class="user-email">${escapeAdminHTML(u.email)}</div>
+            </div>
           </div>
-        </div>
-      </td>
-      <td>${escapeAdminHTML(u.username)}</td>
-      <td>${escapeAdminHTML(u.role)}</td>
-      <td><span class="badge badge-${u.status === 'Active' ? 'success' : 'danger'}">${escapeAdminHTML(u.status)}</span></td>
-      <td>
-        <div class="action-btns">
-          <button class="action-btn edit" onclick="editUser(${u.id})">✏️</button>
-          <button class="action-btn del"  onclick="deleteUser(${u.id})">🗑️</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+        </td>
+        <td>${escapeAdminHTML(u.username)}</td>
+        <td>${escapeAdminHTML(u.role)}</td>
+        <td><span class="badge badge-${u.status === 'Active' ? 'success' : 'danger'}">${escapeAdminHTML(u.status)}</span></td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn edit" onclick="editUser(${u.id})">✏️</button>
+            <button class="action-btn del"  onclick="deleteUser(${u.id})">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c62828;padding:30px;">Failed to load users.</td></tr>';
+    adminToast(err.message || 'Failed to load users.', 'error');
+  }
 }
 
-function saveUser() {
+async function saveUser() {
   const id       = document.getElementById('userId')?.value;
   const name     = document.getElementById('userName')?.value.trim();
   const username = document.getElementById('userUsername')?.value.trim();
@@ -495,49 +503,82 @@ function saveUser() {
   if (!name || !username || !email) { adminToast('Name, username, and email are required.', 'error'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { adminToast('Invalid email address.', 'error'); return; }
 
-  const users = AuthModule.getUsers();
+  if (!id && !password) { adminToast('Password is required for new users.', 'error'); return; }
 
-  if (id) {
-    const idx = users.findIndex(u => u.id == id);
-    if (idx > -1) {
-      users[idx] = { ...users[idx], name, username, email, phone, role, status };
-      if (password) users[idx].password = password;
+  const payload = {
+    id: id ? Number(id) : undefined,
+    full_name: name,
+    username,
+    email,
+    phone,
+    role,
+    status
+  };
+
+  if (password) payload.password = password;
+
+  try {
+    if (id) {
+      const updatePayload = {
+        id: Number(id),
+        full_name: name,
+        email,
+        phone,
+        role,
+        status
+      };
+      if (password) updatePayload.password = password;
+      await userApiRequest('../api/users/update.php', 'PUT', updatePayload);
+    } else {
+      await userApiRequest('../api/users/create.php', 'POST', payload);
     }
-  } else {
-    if (!password) { adminToast('Password is required for new users.', 'error'); return; }
-    const exists = users.find(u => u.username === username);
-    if (exists) { adminToast('Username already taken.', 'error'); return; }
-    users.push({ id: Date.now(), name, username, email, phone, role, status, password, created: new Date().toLocaleDateString() });
-  }
 
-  AuthModule.saveUsers(users);
-  renderUsersTable();
-  closeModal('userModal');
-  adminToast(id ? 'User updated.' : 'User registered.');
+    await renderUsersTable(document.getElementById('userSearch')?.value || '');
+    closeModal('userModal');
+    adminToast(id ? 'User updated.' : 'User added successfully.');
+  } catch (err) {
+    adminToast(err.message || 'Failed to save user.', 'error');
+  }
 }
 
-window.editUser = function(id) {
-  const u = AuthModule.getUsers().find(u => u.id == id);
-  if (!u) return;
-  document.getElementById('userId').value       = u.id;
-  document.getElementById('userName').value     = u.name;
-  document.getElementById('userUsername').value = u.username;
-  document.getElementById('userEmail').value    = u.email;
-  document.getElementById('userPhone').value    = u.phone || '';
-  document.getElementById('userRole').value     = u.role;
-  document.getElementById('userStatus').value   = u.status;
-  document.getElementById('userPassword').value = '';
-  document.getElementById('userModalTitle').textContent = 'Edit User';
-  openModal('userModal');
+window.editUser = async function(id) {
+  try {
+    const res = await fetch(`../api/users/read.php?id=${encodeURIComponent(id)}`);
+    const data = await parseApiJson(res);
+    if (!data.success || !data.data) throw new Error(data.message || 'User not found.');
+
+    const u = data.data;
+    document.getElementById('userId').value       = u.id;
+    document.getElementById('userName').value     = u.full_name || '';
+    document.getElementById('userUsername').value = u.username || '';
+    document.getElementById('userEmail').value    = u.email || '';
+    document.getElementById('userPhone').value    = u.phone || '';
+    document.getElementById('userRole').value     = u.role || 'Organizer';
+    document.getElementById('userStatus').value   = u.status || 'Active';
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userUsername').disabled = true;
+    document.getElementById('userModalTitle').textContent = 'Edit User';
+    openModal('userModal');
+  } catch (err) {
+    adminToast(err.message || 'Failed to load user.', 'error');
+  }
 };
 
-window.deleteUser = function(id) {
+window.deleteUser = async function(id) {
   const session = AuthModule.getSession();
-  if (session && session.id == id) { adminToast('You cannot delete your own account.', 'error'); return; }
+  if (session && Number(session.id) === Number(id)) {
+    adminToast('You cannot delete your own account.', 'error');
+    return;
+  }
   if (!confirm('Delete this user?')) return;
-  AuthModule.saveUsers(AuthModule.getUsers().filter(u => u.id != id));
-  renderUsersTable();
-  adminToast('User deleted.', 'warning');
+
+  try {
+    await userApiRequest('../api/users/delete.php', 'DELETE', { id: Number(id) });
+    await renderUsersTable(document.getElementById('userSearch')?.value || '');
+    adminToast('User deleted.', 'warning');
+  } catch (err) {
+    adminToast(err.message || 'Failed to delete user.', 'error');
+  }
 };
 
 function clearUserForm() {
@@ -545,8 +586,63 @@ function clearUserForm() {
     const el = document.getElementById(i);
     if (el) el.value = '';
   });
+  const usernameEl = document.getElementById('userUsername');
+  if (usernameEl) usernameEl.disabled = false;
+  const roleEl = document.getElementById('userRole');
+  if (roleEl) roleEl.value = 'Organizer';
+  const statusEl = document.getElementById('userStatus');
+  if (statusEl) statusEl.value = 'Active';
   const t = document.getElementById('userModalTitle');
-  if (t) t.textContent = 'Register User';
+  if (t) t.textContent = 'Add User';
+}
+
+async function fetchUsersFromApi(filter = '') {
+  const res = await fetch('../api/users/read.php');
+  const data = await parseApiJson(res);
+  if (!data.success || !Array.isArray(data.data)) {
+    throw new Error(data.message || 'Failed to fetch users.');
+  }
+
+  const q = String(filter || '').trim().toLowerCase();
+  if (!q) return data.data;
+
+  return data.data.filter(u =>
+    String(u.full_name || '').toLowerCase().includes(q) ||
+    String(u.username || '').toLowerCase().includes(q) ||
+    String(u.email || '').toLowerCase().includes(q)
+  );
+}
+
+async function userApiRequest(url, method, payload) {
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await parseApiJson(res);
+  if (!data.success) {
+    throw new Error(data.message || 'Request failed.');
+  }
+  return data;
+}
+
+async function parseApiJson(response) {
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('Server returned invalid JSON. Check PHP errors and API path.');
+  }
+
+  if (!response.ok && parsed && parsed.message) {
+    throw new Error(parsed.message);
+  }
+  if (!response.ok && (!parsed || !parsed.message)) {
+    throw new Error('Server request failed.');
+  }
+
+  return parsed;
 }
 
 /* =============================================

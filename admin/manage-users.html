@@ -48,7 +48,7 @@
           <h3><span class="ch-icon">&#128101;</span> All Users</h3>
           <div class="admin-card-actions">
             <input type="text" id="userSearch" placeholder="Search users..." style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.85rem;width:220px;" />
-            <a href="register.html" class="btn btn-primary" style="font-size:.82rem;padding:8px 16px;">+ Add User</a>
+            <button type="button" id="addUserBtn" class="btn btn-primary" style="font-size:.82rem;padding:8px 16px;">+ Add User</button>
           </div>
         </div>
         <div class="admin-table-wrap">
@@ -86,13 +86,13 @@
           <div class="admin-form-group"><label>Username</label><input type="text" id="userUsername" placeholder="Username" /></div>
           <div class="admin-form-group"><label>Email</label><input type="email" id="userEmail" placeholder="email@example.com" /></div>
           <div class="admin-form-group"><label>Phone</label><input type="tel" id="userPhone" placeholder="09XXXXXXXXX" /></div>
-          <div class="admin-form-group"><label>Role</label><select id="userRole"><option value="Administrator">Administrator</option><option value="Moderator">Moderator</option><option value="Organizer">Organizer</option><option value="Staff">Staff</option></select></div>
+          <div class="admin-form-group"><label>Role</label><select id="userRole"><option value="Administrator">Administrator</option><option value="Organizer">Organizer</option></select></div>
           <div class="admin-form-group"><label>Status</label><select id="userStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
           <div class="admin-form-group full"><label>New Password <span style="color:#aaa;font-weight:400;">(leave blank to keep current)</span></label><input type="password" id="userPassword" placeholder="New password" /></div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Cancel</button>
+        <button type="button" class="btn btn-cancel" onclick="closeModal('userModal')">Cancel</button>
         <button class="btn btn-primary" id="saveUserBtn">Save Changes</button>
       </div>
     </div>

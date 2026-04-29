@@ -46,27 +46,38 @@ const AuthModule = (() => {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   }
 
-  // ── Login ─────────────────────────────────────
-  function login(username, password) {
-    const users = getUsers();
-    // In production: send credentials to server, verify hash, return JWT.
-    const user  = users.find(
-      u => u.username === username && u.password === password && u.status === 'Active'
-    );
-    if (!user) return { ok: false, message: 'Invalid username or password.' };
+  // ── Login (with PHP API) ──────────────────────
+  async function login(username, password) {
+    try {
+      const response = await fetch('api/auth/login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
 
-    const session = {
-      id:       user.id,
-      name:     user.name,
-      username: user.username,
-      role:     user.role,
-      email:    user.email,
-      token:    generateToken(),
-      expires:  Date.now() + 8 * 60 * 60 * 1000, // 8 hours
-    };
+      const data = await response.json();
 
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    return { ok: true, user: session };
+      if (data.success && data.user) {
+        // Create session from API response
+        const session = {
+          id:       data.user.id,
+          name:     data.user.full_name,
+          username: data.user.username,
+          role:     data.user.role,
+          email:    data.user.email,
+          token:    generateToken(),
+          expires:  Date.now() + 8 * 60 * 60 * 1000, // 8 hours
+        };
+
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        return { ok: true, user: session };
+      } else {
+        return { ok: false, message: data.message || 'Login failed.' };
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      return { ok: false, message: 'Connection error. Please try again.' };
+    }
   }
 
   // ── Logout ────────────────────────────────────
@@ -136,8 +147,8 @@ const AuthModule = (() => {
       .toUpperCase();
   }
 
-  // Seed default admin on module load
-  seedAdmin();
+  // Seed default admin on module load (deprecated - using database now)
+  // seedAdmin();
 
   return { login, logout, getSession, requireAuth, requireGuest, populateAdminUI, getUsers, saveUsers };
 })();
@@ -163,33 +174,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  loginForm.addEventListener('submit', (e) => {
+  loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const username = loginForm.querySelector('#username').value.trim();
     const password = loginForm.querySelector('#password').value;
     const errBox   = document.getElementById('login-error');
+    const btn    = loginForm.querySelector('[type="submit"]');
 
     if (!username || !password) {
       if (errBox) { errBox.textContent = 'Please fill in all fields.'; errBox.style.display = 'block'; }
       return;
     }
 
-    const result = AuthModule.login(username, password);
-    const btn    = loginForm.querySelector('[type="submit"]');
-
     btn.disabled    = true;
     btn.textContent = 'Logging in…';
 
-    // Simulate server delay
-    setTimeout(() => {
+    try {
+      const result = await AuthModule.login(username, password);
+
       if (result.ok) {
+        if (errBox) errBox.style.display = 'none';
         window.location.href = 'admin/dashboard.html';
       } else {
         if (errBox) { errBox.textContent = result.message; errBox.style.display = 'block'; }
         btn.disabled    = false;
-        btn.textContent = 'Login';
+        btn.textContent = 'Login → ';
       }
-    }, 600);
+    } catch (error) {
+      if (errBox) { errBox.textContent = 'An error occurred. Please try again.'; errBox.style.display = 'block'; }
+      btn.disabled    = false;
+      btn.textContent = 'Login → ';
+    }
   });
 });
