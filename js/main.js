@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPublicEvents();
   loadPublicNews();
   initNewsPage();
+  initNewsArticlePage();
   loadPublicAboutPage();
   loadPublicContactInfo();
 });
@@ -320,7 +321,7 @@ function initNewsPage() {
   if (!gallery || !tallyBody || !winnersList || !leaderboardList || !leaderboardFilters) return;
 
   const STANDINGS_KEY = 'otm_sportsfest_standings';
-  const state = { sport: 'vol' };
+  const state = { sport: 'vol', highlightIndex: 0, highlightTimer: null };
 
   const defaultStandings = [
     { course: 'IT',      vol: 'G', bbl: 'S', fut: '-', bad: 'G',  g: 2, s: 1, b: 0 },
@@ -384,30 +385,140 @@ function initNewsPage() {
     return '<span class="news-medal sport-n">-</span>';
   }
 
-  function getHighlights() {
+  async function getHighlights() {
     try {
-      const stored = JSON.parse(localStorage.getItem('otm_gallery')) || [];
-      if (Array.isArray(stored) && stored.length) return stored;
+      const res = await fetch('api/news/read.php?limit=50');
+      const json = await parsePublicApiJson(res);
+      if (json.success && Array.isArray(json.data) && json.data.length) {
+        const rows = json.data;
+        const highlightRows = rows.filter(function (row) {
+          return String(row.category || '').toLowerCase() === 'highlights';
+        });
+
+        const source = highlightRows.length ? highlightRows : rows;
+        return source.slice(0, 10).map(function (row) {
+          const images = parseNewsArticlePhotoPaths(row.photo_path);
+          return {
+            id: row.id,
+            src: images[0] || 'src/images/placeholder.png',
+            title: row.title || 'Highlight',
+            caption: row.excerpt || '',
+            publishDate: row.publish_date || ''
+          };
+        });
+      }
     } catch {
-      // ignore and use fallback
+      // fall through to fallback content
     }
 
     return [
-      { src: 'src/images/vb-random.jpg', title: 'Volleyball Finals', caption: 'Crowd-favorite championship match' },
-      { src: 'src/images/bb-random.jpg', title: 'Basketball Semis', caption: 'Fast-break highlights and buzzer plays' },
-      { src: 'src/images/fs-random.jpg', title: 'Futsal Knockouts', caption: 'Back-to-back goals in the final minutes' },
-      { src: 'src/images/bd-random.jpg', title: 'Badminton Open', caption: 'Singles and doubles winners take the podium' },
+      { id: '', src: 'src/images/vb-random.jpg', title: 'Volleyball Finals', caption: 'Crowd-favorite championship match', publishDate: '' },
+      { id: '', src: 'src/images/bb-random.jpg', title: 'Basketball Semis', caption: 'Fast-break highlights and buzzer plays', publishDate: '' },
+      { id: '', src: 'src/images/fs-random.jpg', title: 'Futsal Knockouts', caption: 'Back-to-back goals in the final minutes', publishDate: '' },
+      { id: '', src: 'src/images/bd-random.jpg', title: 'Badminton Open', caption: 'Singles and doubles winners take the podium', publishDate: '' },
     ];
   }
 
-  function renderHighlights() {
-    const items = getHighlights();
-    gallery.innerHTML = items.map(function (item) {
-      return '<figure class="highlight-card">' +
-        '<img src="' + escapeHTML(item.src || '') + '" alt="' + escapeHTML(item.title || 'Highlight') + '" />' +
-        '<figcaption><strong>' + escapeHTML(item.title || 'Highlight') + '</strong><span>' + escapeHTML(item.caption || '') + '</span></figcaption>' +
-      '</figure>';
-    }).join('');
+  function updateHighlightSlide(index) {
+    const track = gallery.querySelector('.highlights-track');
+    const dots = gallery.querySelectorAll('.highlight-dot');
+    const slides = gallery.querySelectorAll('.highlight-card');
+    if (!track || !slides.length) return;
+
+    const safeIndex = (index + slides.length) % slides.length;
+    state.highlightIndex = safeIndex;
+    track.style.transform = 'translateX(-' + (safeIndex * 100) + '%)';
+
+    dots.forEach(function (dot, i) {
+      dot.classList.toggle('active', i === safeIndex);
+      dot.setAttribute('aria-selected', i === safeIndex ? 'true' : 'false');
+    });
+  }
+
+  function restartHighlightAutoPlay() {
+    if (state.highlightTimer) {
+      clearInterval(state.highlightTimer);
+      state.highlightTimer = null;
+    }
+
+    const slides = gallery.querySelectorAll('.highlight-card');
+    if (slides.length <= 1) return;
+
+    state.highlightTimer = setInterval(function () {
+      updateHighlightSlide(state.highlightIndex + 1);
+    }, 4500);
+  }
+
+  async function renderHighlights() {
+    const items = await getHighlights();
+    if (!items.length) {
+      gallery.innerHTML = '<div class="news-empty">No highlights available.</div>';
+      return;
+    }
+
+    gallery.innerHTML =
+      '<div class="highlights-carousel">' +
+        '<div class="highlights-track">' +
+          items.map(function (item) {
+            const linkStart = item.id ? '<a class="highlight-link" href="news-article.html?id=' + encodeURIComponent(String(item.id)) + '">' : '';
+            const linkEnd = item.id ? '</a>' : '';
+            return '<figure class="highlight-card">' +
+              linkStart +
+              '<img src="' + escapeHTML(item.src || '') + '" alt="' + escapeHTML(item.title || 'Highlight') + '" />' +
+              '<figcaption><strong>' + escapeHTML(item.title || 'Highlight') + '</strong><span>' + escapeHTML(item.caption || '') + '</span></figcaption>' +
+              linkEnd +
+            '</figure>';
+          }).join('') +
+        '</div>' +
+        '<button type="button" class="highlights-nav prev" aria-label="Previous highlight">&#10094;</button>' +
+        '<button type="button" class="highlights-nav next" aria-label="Next highlight">&#10095;</button>' +
+      '</div>' +
+      '<div class="highlights-dots" role="tablist" aria-label="Highlight slides">' +
+        items.map(function (_, idx) {
+          return '<button type="button" class="highlight-dot' + (idx === 0 ? ' active' : '') + '" data-slide="' + idx + '" role="tab" aria-selected="' + (idx === 0 ? 'true' : 'false') + '" aria-label="Go to slide ' + (idx + 1) + '"></button>';
+        }).join('') +
+      '</div>';
+
+    const prevBtn = gallery.querySelector('.highlights-nav.prev');
+    const nextBtn = gallery.querySelector('.highlights-nav.next');
+    const dotsWrap = gallery.querySelector('.highlights-dots');
+    const carousel = gallery.querySelector('.highlights-carousel');
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        updateHighlightSlide(state.highlightIndex - 1);
+        restartHighlightAutoPlay();
+      });
+    }
+
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        updateHighlightSlide(state.highlightIndex + 1);
+        restartHighlightAutoPlay();
+      });
+    }
+
+    if (dotsWrap) {
+      dotsWrap.addEventListener('click', function (e) {
+        const dot = e.target.closest('.highlight-dot');
+        if (!dot) return;
+        const slide = Number(dot.getAttribute('data-slide'));
+        updateHighlightSlide(slide);
+        restartHighlightAutoPlay();
+      });
+    }
+
+    if (carousel) {
+      carousel.addEventListener('mouseenter', function () {
+        if (state.highlightTimer) clearInterval(state.highlightTimer);
+      });
+      carousel.addEventListener('mouseleave', function () {
+        restartHighlightAutoPlay();
+      });
+    }
+
+    updateHighlightSlide(0);
+    restartHighlightAutoPlay();
   }
 
   function renderTally() {
@@ -536,7 +647,106 @@ function initNewsPage() {
 }
 
 /* =============================================
-   9. LOAD PUBLIC ABOUT PAGE
+   9. NEWS ARTICLE PAGE
+   ============================================= */
+async function initNewsArticlePage() {
+  const page = document.getElementById('newsArticlePage');
+  if (!page) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id');
+
+  const carouselTrack = document.getElementById('articleCarouselTrack');
+  const titleEl = document.getElementById('articleTitle');
+  const dateEl = document.getElementById('articleDate');
+  const contentEl = document.getElementById('articleContent');
+  const dotsEl = document.getElementById('articleCarouselDots');
+  const prevBtn = document.getElementById('articleCarouselPrev');
+  const nextBtn = document.getElementById('articleCarouselNext');
+
+  if (!id) {
+    if (contentEl) contentEl.innerHTML = '<p>Article not found.</p>';
+    return;
+  }
+
+  try {
+    const res = await fetch('api/news/read.php?id=' + encodeURIComponent(id));
+    const json = await parsePublicApiJson(res);
+
+    if (!json.success || !json.data) {
+      throw new Error('Article not found');
+    }
+
+    const article = json.data;
+    const images = parseNewsArticlePhotoPaths(article.photo_path);
+
+    if (titleEl) titleEl.textContent = article.title || 'Untitled Article';
+    if (dateEl) dateEl.textContent = formatNewsDateForPublic(article.publish_date);
+    if (contentEl) {
+      const raw = String(article.content || article.excerpt || '').trim();
+      if (raw) {
+        const paragraphs = raw.split(/\r?\n\s*\r?\n/).map(function (p) { return p.trim(); }).filter(Boolean);
+        if (paragraphs.length) {
+          contentEl.innerHTML = paragraphs.map(function (p) { return '<p>' + escapeHTML(p).replace(/\n/g, '<br>') + '</p>'; }).join('');
+        } else {
+          contentEl.innerHTML = '<p>' + escapeHTML(raw).replace(/\n/g, '<br>') + '</p>';
+        }
+      } else {
+        contentEl.innerHTML = '<p>No article content available.</p>';
+      }
+    }
+
+    let current = 0;
+
+    if (carouselTrack) {
+      carouselTrack.innerHTML = images.map(function (src) {
+        return '<div class="article-slide"><img src="' + escapeHTML(src) + '" alt="Article image" /></div>';
+      }).join('');
+    }
+
+    if (dotsEl) {
+      dotsEl.innerHTML = images.map(function (_, idx) {
+        return '<button type="button" class="article-dot' + (idx === 0 ? ' active' : '') + '" data-slide="' + idx + '" aria-label="Go to image ' + (idx + 1) + '"></button>';
+      }).join('');
+    }
+
+    function setSlide(idx) {
+      if (!carouselTrack || !images.length) return;
+      current = (idx + images.length) % images.length;
+      carouselTrack.style.transform = 'translateX(-' + (current * 100) + '%)';
+      if (dotsEl) {
+        dotsEl.querySelectorAll('.article-dot').forEach(function (dot, i) {
+          dot.classList.toggle('active', i === current);
+        });
+      }
+    }
+
+    if (prevBtn) {
+      prevBtn.style.display = images.length > 1 ? 'inline-flex' : 'none';
+      prevBtn.addEventListener('click', function () { setSlide(current - 1); });
+    }
+
+    if (nextBtn) {
+      nextBtn.style.display = images.length > 1 ? 'inline-flex' : 'none';
+      nextBtn.addEventListener('click', function () { setSlide(current + 1); });
+    }
+
+    if (dotsEl) {
+      dotsEl.addEventListener('click', function (e) {
+        const dot = e.target.closest('.article-dot');
+        if (!dot) return;
+        setSlide(Number(dot.getAttribute('data-slide')));
+      });
+    }
+
+    setSlide(0);
+  } catch {
+    if (contentEl) contentEl.innerHTML = '<p>Unable to load this article.</p>';
+  }
+}
+
+/* =============================================
+   10. LOAD PUBLIC ABOUT PAGE
    ============================================= */
 async function loadPublicAboutPage() {
   const titleEl = document.getElementById('publicAboutTitle');
@@ -624,7 +834,7 @@ async function loadPublicContactInfo() {
 }
 
 /* =============================================
-   10. HELPER FUNCTIONS
+   11. HELPER FUNCTIONS
    ============================================= */
 function escapeHTML(str) {
   if (typeof str !== 'string') return '';
@@ -634,6 +844,38 @@ function escapeHTML(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function parseNewsArticlePhotoPaths(value) {
+  if (!value) return ['src/images/placeholder.png'];
+
+  const raw = String(value).trim();
+  if (!raw || raw === 'src/images/placeholder.png') {
+    return ['src/images/placeholder.png'];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length) {
+      return parsed.map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+    }
+  } catch {
+    // not JSON format
+  }
+
+  if (raw.includes(',')) {
+    const list = raw.split(',').map(function (v) { return v.trim(); }).filter(Boolean);
+    return list.length ? list : ['src/images/placeholder.png'];
+  }
+
+  return [raw];
+}
+
+function formatNewsDateForPublic(dateStr) {
+  if (!dateStr) return 'Date not available';
+  const d = new Date(String(dateStr).slice(0, 10) + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 // Strip tags from user input before sending to server

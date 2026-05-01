@@ -75,6 +75,20 @@
         <input type="hidden" id="newsId" />
         <div class="admin-form-grid">
           <div class="admin-form-group full">
+            <label>Article Photo(s)</label>
+            <div class="news-photo-uploader">
+              <div class="news-photo-toolbar">
+                <button type="button" class="btn btn-dark" id="newsPhotoAdd">Add Image</button>
+                <button type="button" class="btn btn-cancel" id="newsPhotoReset">Remove All</button>
+                <span id="newsPhotoCount" style="font-size:.75rem;color:#666;">Using placeholder.png (default)</span>
+              </div>
+              <div id="newsPhotoGallery" class="news-photo-gallery"></div>
+            </div>
+            <input type="file" id="newsPhotoUpload" accept="image/*" multiple hidden />
+            <input type="hidden" id="newsPhotoPath" />
+          </div>
+
+          <div class="admin-form-group full">
             <label>Title <span style="color:red;">*</span></label>
             <input type="text" id="newsTitle" placeholder="Article title" />
           </div>
@@ -87,6 +101,10 @@
               <option value="General">General</option>
             </select>
           </div>
+          <div class="admin-form-group">
+            <label>Publish Date <span style="color:red;">*</span></label>
+            <input type="date" id="newsPublishDate" />
+          </div>
           <div class="admin-form-group full">
             <label>Excerpt (short summary) <span style="color:red;">*</span></label>
             <textarea id="newsExcerpt" rows="3" placeholder="Short description shown in previews..."></textarea>
@@ -98,8 +116,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Cancel</button>
-        <button class="btn btn-primary" id="saveNewsBtn">Publish</button>
+        <button type="button" class="btn btn-cancel" onclick="closeModal('newsModal')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveNewsBtn">Save Article</button>
       </div>
     </div>
   </div>

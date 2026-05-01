@@ -352,6 +352,11 @@ function clearEventForm() {
 /* =============================================
    NEWS MANAGER
    ============================================= */
+let newsCache = [];
+const NEWS_PLACEHOLDER_PREVIEW = '../src/images/placeholder.png';
+const NEWS_PLACEHOLDER_DB_PATH = 'src/images/placeholder.png';
+let newsPhotoItems = [];
+
 function initNewsManager() {
   const page = document.getElementById('adminNews');
   if (!page) return;
@@ -364,89 +369,351 @@ function initNewsManager() {
   const saveBtn = document.getElementById('saveNewsBtn');
   if (saveBtn) saveBtn.addEventListener('click', saveNews);
 
+  const photoAddBtn = document.getElementById('newsPhotoAdd');
+  const resetBtn = document.getElementById('newsPhotoReset');
+  const uploadInput = document.getElementById('newsPhotoUpload');
+
+  if (photoAddBtn && uploadInput) {
+    photoAddBtn.addEventListener('click', () => uploadInput.click());
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      clearNewsPhotoItems();
+      if (uploadInput) uploadInput.value = '';
+      renderNewsPhotoGallery();
+    });
+  }
+
+  if (uploadInput) {
+    uploadInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      addNewsPhotoFiles(files);
+      uploadInput.value = '';
+    });
+  }
+
   const search  = document.getElementById('newsSearch');
   if (search) search.addEventListener('input', () => renderNewsTable(search.value));
 }
 
-function renderNewsTable(filter = '') {
+async function renderNewsTable(filter = '') {
   const tbody = document.getElementById('newsTableBody');
   if (!tbody) return;
 
-  const news = DataStore.getNews().filter(n =>
-    !filter || n.title.toLowerCase().includes(filter.toLowerCase())
-  );
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>';
 
-  if (!news.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">No articles found.</td></tr>';
-    return;
+  try {
+    const url = '../api/news/read.php' + (filter ? ('?search=' + encodeURIComponent(filter)) : '');
+    const res = await fetch(url);
+    const json = await res.json();
+
+    if (!json.success) {
+      throw new Error(json.message || 'Failed to load news articles.');
+    }
+
+    const news = Array.isArray(json.data) ? json.data : [];
+    newsCache = news;
+
+    if (!news.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">No articles found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = news.map((n, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><strong>${escapeAdminHTML(n.title || '')}</strong></td>
+        <td>${escapeAdminHTML(n.category || 'General')}</td>
+        <td>${escapeAdminHTML(formatNewsDateDisplay(n.publish_date))}</td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn edit" title="Edit" onclick="editNews(${Number(n.id)})">✏️</button>
+            <button class="action-btn del" title="Delete" onclick="deleteNews(${Number(n.id)})">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('renderNewsTable error:', err);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#e53935;padding:30px;">Failed to load news articles.</td></tr>';
   }
-
-  tbody.innerHTML = news.map((n, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td><strong>${escapeAdminHTML(n.title)}</strong></td>
-      <td>${escapeAdminHTML(n.category)}</td>
-      <td>${escapeAdminHTML(n.date)}</td>
-      <td>
-        <div class="action-btns">
-          <button class="action-btn edit" title="Edit"   onclick="editNews('${n.id}')">✏️</button>
-          <button class="action-btn del"  title="Delete" onclick="deleteNews('${n.id}')">🗑️</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
 }
 
-function saveNews() {
+async function saveNews() {
   const id       = document.getElementById('newsId')?.value;
   const title    = document.getElementById('newsTitle')?.value.trim();
   const category = document.getElementById('newsCategory')?.value.trim();
+  const publishDate = document.getElementById('newsPublishDate')?.value;
   const excerpt  = document.getElementById('newsExcerpt')?.value.trim();
   const content  = document.getElementById('newsContent')?.value.trim();
-  const date     = new Date().toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
 
-  if (!title || !excerpt) { adminToast('Title and excerpt are required.', 'error'); return; }
-
-  const news = DataStore.getNews();
-  if (id) {
-    const idx = news.findIndex(n => n.id === id);
-    if (idx > -1) news[idx] = { ...news[idx], title, category, excerpt, content };
-  } else {
-    news.unshift({ id: 'n' + Date.now(), title, category, excerpt, content, date });
+  if (!title || !excerpt || !publishDate) {
+    adminToast('Title, excerpt, and publish date are required.', 'error');
+    return;
   }
 
-  DataStore.saveNews(news);
-  renderNewsTable();
-  closeModal('newsModal');
-  adminToast(id ? 'Article updated.' : 'Article published.');
+  const endpoint = id ? '../api/news/update.php' : '../api/news/create.php';
+
+  try {
+    const photoPath = await buildNewsPhotoPathValue();
+
+    const payload = {
+      id: id ? Number(id) : undefined,
+      title,
+      category: category || 'General',
+      excerpt,
+      content,
+      publish_date: publishDate,
+      photo_path: photoPath
+    };
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.message || 'Failed to save article.');
+    }
+
+    await renderNewsTable(document.getElementById('newsSearch')?.value || '');
+    closeModal('newsModal');
+    adminToast(id ? 'Article updated.' : 'Article published.');
+  } catch (err) {
+    console.error('saveNews error:', err);
+    adminToast(err.message || 'Failed to save article.', 'error');
+  }
 }
 
 window.editNews = function(id) {
-  const n = DataStore.getNews().find(item => item.id === id);
+  const n = newsCache.find(item => Number(item.id) === Number(id));
   if (!n) return;
-  document.getElementById('newsId').value       = n.id;
-  document.getElementById('newsTitle').value    = n.title;
-  document.getElementById('newsCategory').value = n.category;
-  document.getElementById('newsExcerpt').value  = n.excerpt;
-  document.getElementById('newsContent').value  = n.content || '';
+  document.getElementById('newsId').value          = n.id;
+  document.getElementById('newsTitle').value       = n.title || '';
+  document.getElementById('newsCategory').value    = n.category || 'General';
+  document.getElementById('newsPublishDate').value = formatNewsDateInput(n.publish_date);
+  clearNewsPhotoItems();
+  newsPhotoItems = parseNewsPhotoPaths(n.photo_path).map((path) => ({
+    kind: 'existing',
+    path,
+    preview: toNewsPreviewSrc(path)
+  }));
+  renderNewsPhotoGallery();
+  document.getElementById('newsExcerpt').value     = n.excerpt || '';
+  document.getElementById('newsContent').value     = n.content || '';
   document.getElementById('newsModalTitle').textContent = 'Edit Article';
+  const saveBtn = document.getElementById('saveNewsBtn');
+  if (saveBtn) saveBtn.textContent = 'Update Article';
   openModal('newsModal');
 };
 
-window.deleteNews = function(id) {
+window.deleteNews = async function(id) {
   if (!confirm('Delete this article?')) return;
-  DataStore.saveNews(DataStore.getNews().filter(n => n.id !== id));
-  renderNewsTable();
-  adminToast('Article deleted.', 'warning');
+  try {
+    const res = await fetch('../api/news/delete.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: Number(id) })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to delete article.');
+
+    await renderNewsTable(document.getElementById('newsSearch')?.value || '');
+    adminToast('Article deleted.', 'warning');
+  } catch (err) {
+    console.error('deleteNews error:', err);
+    adminToast(err.message || 'Failed to delete article.', 'error');
+  }
 };
 
 function clearNewsForm() {
-  ['newsId','newsTitle','newsCategory','newsExcerpt','newsContent'].forEach(i => {
+  ['newsId','newsTitle','newsCategory','newsPublishDate','newsPhotoPath','newsExcerpt','newsContent'].forEach(i => {
     const el = document.getElementById(i);
     if (el) el.value = '';
   });
+  clearNewsPhotoItems();
+  const uploadInput = document.getElementById('newsPhotoUpload');
+  if (uploadInput) uploadInput.value = '';
+  renderNewsPhotoGallery();
+  const category = document.getElementById('newsCategory');
+  if (category) category.value = 'General';
+  const publishDate = document.getElementById('newsPublishDate');
+  if (publishDate) publishDate.value = new Date().toISOString().slice(0, 10);
   const t = document.getElementById('newsModalTitle');
   if (t) t.textContent = 'Add Article';
+  const saveBtn = document.getElementById('saveNewsBtn');
+  if (saveBtn) saveBtn.textContent = 'Save Article';
+}
+
+function formatNewsDateDisplay(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatNewsDateInput(dateStr) {
+  if (!dateStr) return '';
+  const value = String(dateStr).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+}
+
+function parseNewsPhotoPaths(value) {
+  if (!value) return [];
+  const raw = String(value).trim();
+  if (!raw || raw === NEWS_PLACEHOLDER_DB_PATH) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(Boolean).map(v => String(v).trim()).filter(Boolean);
+    }
+  } catch {
+    // not JSON, continue
+  }
+
+  if (raw.includes(',')) {
+    return raw.split(',').map(v => v.trim()).filter(Boolean);
+  }
+
+  return [raw];
+}
+
+function serializeNewsPhotoPaths(paths) {
+  const clean = (Array.isArray(paths) ? paths : []).filter(Boolean).map(v => String(v).trim()).filter(Boolean);
+  if (!clean.length) return NEWS_PLACEHOLDER_DB_PATH;
+  if (clean.length === 1) return clean[0];
+  return JSON.stringify(clean);
+}
+
+function toNewsPreviewSrc(path) {
+  if (!path) return NEWS_PLACEHOLDER_PREVIEW;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith('../')) return path;
+  if (path.startsWith('src/')) return '../' + path;
+  return path;
+}
+
+function renderNewsPhotoGallery() {
+  const gallery = document.getElementById('newsPhotoGallery');
+  const countEl = document.getElementById('newsPhotoCount');
+  const hidden = document.getElementById('newsPhotoPath');
+  const existingPaths = newsPhotoItems
+    .filter((item) => item.kind === 'existing')
+    .map((item) => item.path);
+  const serialized = serializeNewsPhotoPaths(existingPaths);
+
+  if (hidden) hidden.value = serialized;
+
+  if (gallery) {
+    if (!newsPhotoItems.length) {
+      gallery.innerHTML =
+        '<div class="news-photo-item placeholder">' +
+          '<img src="' + NEWS_PLACEHOLDER_PREVIEW + '" alt="Placeholder" />' +
+        '</div>';
+    } else {
+      gallery.innerHTML = newsPhotoItems.map((item, idx) => {
+        const src = item.preview || NEWS_PLACEHOLDER_PREVIEW;
+        const alt = item.kind === 'new' ? 'Selected photo' : 'Saved photo';
+        return '<div class="news-photo-item">' +
+            '<img src="' + escapeAdminHTML(src) + '" alt="' + escapeAdminHTML(alt) + '" />' +
+            '<button type="button" class="news-photo-remove" onclick="removeNewsPhoto(' + idx + ')" aria-label="Remove image">&times;</button>' +
+          '</div>';
+      }).join('');
+    }
+  }
+
+  if (countEl) {
+    if (!newsPhotoItems.length) {
+      countEl.textContent = 'Using placeholder.png (default)';
+    } else if (newsPhotoItems.length === 1) {
+      countEl.textContent = '1 image selected';
+    } else {
+      countEl.textContent = newsPhotoItems.length + ' images selected';
+    }
+  }
+}
+
+function addNewsPhotoFiles(files) {
+  files.forEach((file) => {
+    const key = file.name + '::' + file.size + '::' + file.lastModified;
+    const exists = newsPhotoItems.some((item) => item.kind === 'new' && item.key === key);
+    if (exists) return;
+
+    newsPhotoItems.push({
+      kind: 'new',
+      key,
+      file,
+      preview: URL.createObjectURL(file)
+    });
+  });
+
+  renderNewsPhotoGallery();
+}
+
+window.removeNewsPhoto = function(index) {
+  const i = Number(index);
+  if (Number.isNaN(i) || i < 0 || i >= newsPhotoItems.length) return;
+
+  const item = newsPhotoItems[i];
+  if (item && item.kind === 'new' && item.preview) {
+    URL.revokeObjectURL(item.preview);
+  }
+
+  newsPhotoItems.splice(i, 1);
+  renderNewsPhotoGallery();
+};
+
+function clearNewsPhotoItems() {
+  newsPhotoItems.forEach((item) => {
+    if (item.kind === 'new' && item.preview) {
+      URL.revokeObjectURL(item.preview);
+    }
+  });
+  newsPhotoItems = [];
+}
+
+async function uploadNewsPhotos(files) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('photos[]', file));
+
+  try {
+    const res = await fetch('../api/news/upload-photos.php', {
+      method: 'POST',
+      body: formData
+    });
+    const json = await res.json();
+    if (!json.success || !Array.isArray(json.paths)) {
+      throw new Error(json.message || 'Failed to upload images.');
+    }
+
+    return json.paths;
+  } catch (err) {
+    console.error('uploadNewsPhotos error:', err);
+    throw new Error(err.message || 'Failed to upload images.');
+  }
+}
+
+async function buildNewsPhotoPathValue() {
+  const existingPaths = newsPhotoItems
+    .filter((item) => item.kind === 'existing' && item.path)
+    .map((item) => item.path);
+
+  const newFiles = newsPhotoItems
+    .filter((item) => item.kind === 'new' && item.file)
+    .map((item) => item.file);
+
+  let uploadedPaths = [];
+  if (newFiles.length) {
+    uploadedPaths = await uploadNewsPhotos(newFiles);
+  }
+
+  const merged = [...existingPaths, ...uploadedPaths].filter(Boolean);
+  return serializeNewsPhotoPaths(merged);
 }
 
 /* =============================================
