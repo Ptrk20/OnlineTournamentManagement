@@ -12,6 +12,20 @@ const AuthModule = (() => {
 
   const SESSION_KEY = 'otm_session';
   const USERS_KEY   = 'otm_users';
+  const ROLE_ADMIN = 'Administrator';
+  const ROLE_REPRESENTATIVE = 'Representative';
+
+  function normalizeRole(role) {
+    return String(role || '').trim().toLowerCase();
+  }
+
+  function isRepresentative(role) {
+    return normalizeRole(role) === ROLE_REPRESENTATIVE.toLowerCase();
+  }
+
+  function isAdministrator(role) {
+    return normalizeRole(role) === ROLE_ADMIN.toLowerCase();
+  }
 
   // ── Default admin account (seeded on first load) ──
   const DEFAULT_ADMIN = {
@@ -99,6 +113,17 @@ const AuthModule = (() => {
     } catch { return null; }
   }
 
+  function getHomePath(session, isAdminPage = false) {
+    const role = session?.role;
+    if (isRepresentative(role)) {
+      return isAdminPage ? 'register.html' : 'admin/register.html';
+    }
+    if (isAdministrator(role)) {
+      return isAdminPage ? 'dashboard.html' : 'admin/dashboard.html';
+    }
+    return isAdminPage ? 'dashboard.html' : 'admin/dashboard.html';
+  }
+
   // ── Guard: redirect if not logged in ──────────
   function requireAuth() {
     const session = getSession();
@@ -106,19 +131,73 @@ const AuthModule = (() => {
       window.location.href = '../login.html';
       return null;
     }
+
+    const currentPage = (window.location.pathname.split('/').pop() || '').toLowerCase();
+    if (isRepresentative(session.role) && currentPage !== 'register.html') {
+      window.location.href = 'register.html';
+      return null;
+    }
+
     return session;
   }
 
   // ── Guard: redirect if already logged in ──────
   function requireGuest() {
-    if (getSession()) {
-      window.location.href = 'admin/dashboard.html';
+    const session = getSession();
+    if (session) {
+      window.location.href = getHomePath(session, false);
+    }
+  }
+
+  function applyRoleAccess(session) {
+    if (!session) return;
+    if (!isRepresentative(session.role)) return;
+
+    document.querySelectorAll('.sidebar-nav a').forEach(link => {
+      const href = (link.getAttribute('href') || '').toLowerCase();
+      if (href !== 'register.html') {
+        link.style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('.sidebar-nav .nav-label').forEach(label => {
+      label.style.display = 'none';
+    });
+
+    const regLink = document.querySelector('.sidebar-nav a[href="register.html"]');
+    if (regLink) {
+      regLink.style.display = '';
+      regLink.classList.add('active');
+    }
+
+    // Hide other admin-page links in content sections as well.
+    document.querySelectorAll('a[href$=".html"]').forEach(link => {
+      const href = (link.getAttribute('href') || '').toLowerCase();
+      if (!href || href === 'register.html' || href === '../index.html') return;
+      if (href.includes('://') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+      link.style.display = 'none';
+    });
+
+    // Representatives should not see the public-site shortcut from admin pages.
+    document.querySelectorAll('.sidebar-footer a').forEach(link => {
+      link.style.display = 'none';
+    });
+  }
+
+  function markRoleAccessReady() {
+    if (document.body) {
+      document.body.classList.add('role-access-ready');
     }
   }
 
   // ── Populate admin UI with user info ──────────
   function populateAdminUI(session) {
     if (!session) return;
+
+    const brandName = document.querySelector('.sidebar-brand .brand-text .name');
+    if (brandName) {
+      brandName.textContent = isRepresentative(session.role) ? 'OTM Registration' : 'OTM Admin';
+    }
 
     document.querySelectorAll('[data-user-name]').forEach(el => {
       el.textContent = session.name;
@@ -150,7 +229,33 @@ const AuthModule = (() => {
   // Seed default admin on module load (deprecated - using database now)
   // seedAdmin();
 
-  return { login, logout, getSession, requireAuth, requireGuest, populateAdminUI, getUsers, saveUsers };
+  return {
+    login,
+    logout,
+    getSession,
+    requireAuth,
+    requireGuest,
+    populateAdminUI,
+    getUsers,
+    saveUsers,
+    getHomePath,
+    applyRoleAccess,
+    markRoleAccessReady
+  };
+})();
+
+// Apply role-based module visibility as early as possible on admin pages
+// to prevent a brief flash of restricted modules before admin.js initializes.
+(() => {
+  const path = (window.location.pathname || '').toLowerCase();
+  if (!path.includes('/admin/')) return;
+
+  const session = AuthModule.getSession();
+  if (!session) return;
+
+  AuthModule.populateAdminUI(session);
+  AuthModule.applyRoleAccess(session);
+  AuthModule.markRoleAccessReady();
 })();
 
 /* =============================================
@@ -195,7 +300,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (result.ok) {
         if (errBox) errBox.style.display = 'none';
-        window.location.href = 'admin/dashboard.html';
+
+        // Role is now known; prepare role-specific UI state before navigation.
+        AuthModule.applyRoleAccess(result.user);
+        AuthModule.markRoleAccessReady();
+
+        window.location.href = AuthModule.getHomePath(result.user, false);
       } else {
         if (errBox) { errBox.textContent = result.message; errBox.style.display = 'block'; }
         btn.disabled    = false;

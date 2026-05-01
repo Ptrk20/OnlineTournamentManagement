@@ -125,12 +125,12 @@ if (isset($input['phone'])) {
 // Update role if provided
 if (isset($input['role']) && !empty($input['role'])) {
     $role = trim($input['role']);
-    $valid_roles = ['Administrator', 'Organizer', 'Staff'];
+    $valid_roles = ['Administrator', 'Representative'];
     if (!in_array($role, $valid_roles)) {
         http_response_code(400);
         die(json_encode([
             'success' => false,
-            'message' => 'Invalid role. Must be Administrator, Organizer, or Staff.'
+            'message' => 'Invalid role. Must be Administrator or Representative.'
         ]));
     }
     $updates[] = 'role = ?';

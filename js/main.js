@@ -280,33 +280,123 @@ function renderEventCard(ev) {
 /* =============================================
    8. LOAD PUBLIC NEWS
    ============================================= */
-function loadPublicNews() {
+async function loadPublicNews() {
   const container = document.getElementById('news-list');
   if (!container) return;
 
-  const news = DataStore.getNews();
-  if (!news.length) {
-    container.innerHTML = '<p class="text-center" style="color:#aaa;padding:30px;">No news articles yet.</p>';
-    return;
-  }
+  try {
+    const res = await fetch('api/news/read.php?limit=8');
+    const json = await parsePublicApiJson(res);
+    const rows = json.success && Array.isArray(json.data) ? json.data.slice(0, 8) : [];
 
-  container.innerHTML = news.slice(0, 3).map(n => renderNewsCard(n)).join('');
+    if (!rows.length) {
+      container.innerHTML = '<p class="text-center" style="color:#aaa;padding:30px;">No news articles yet.</p>';
+      return;
+    }
+
+    container.innerHTML =
+      '<div class="home-news-carousel">' +
+        '<div class="home-news-track">' +
+          rows.map(function (row) {
+            return renderHomeNewsSlide(row);
+          }).join('') +
+        '</div>' +
+        '<button type="button" class="home-news-nav prev" aria-label="Previous article">&#10094;</button>' +
+        '<button type="button" class="home-news-nav next" aria-label="Next article">&#10095;</button>' +
+      '</div>' +
+      '<div class="home-news-dots" role="tablist" aria-label="News articles">' +
+        rows.map(function (_, idx) {
+          return '<button type="button" class="home-news-dot' + (idx === 0 ? ' active' : '') + '" data-slide="' + idx + '" role="tab" aria-selected="' + (idx === 0 ? 'true' : 'false') + '" aria-label="Go to article ' + (idx + 1) + '"></button>';
+        }).join('') +
+      '</div>';
+
+    const track = container.querySelector('.home-news-track');
+    const slides = container.querySelectorAll('.home-news-slide');
+    const dots = container.querySelectorAll('.home-news-dot');
+    const prevBtn = container.querySelector('.home-news-nav.prev');
+    const nextBtn = container.querySelector('.home-news-nav.next');
+    const carousel = container.querySelector('.home-news-carousel');
+    let currentIndex = 0;
+    let autoTimer = null;
+
+    function setSlide(index) {
+      if (!track || !slides.length) return;
+      currentIndex = (index + slides.length) % slides.length;
+      track.style.transform = 'translateX(-' + (currentIndex * 100) + '%)';
+      dots.forEach(function (dot, dotIndex) {
+        const isActive = dotIndex === currentIndex;
+        dot.classList.toggle('active', isActive);
+        dot.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+    }
+
+    function restartAutoPlay() {
+      if (autoTimer) clearInterval(autoTimer);
+      if (slides.length <= 1) return;
+      autoTimer = setInterval(function () {
+        setSlide(currentIndex + 1);
+      }, 5000);
+    }
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        setSlide(currentIndex - 1);
+        restartAutoPlay();
+      });
+    }
+
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        setSlide(currentIndex + 1);
+        restartAutoPlay();
+      });
+    }
+
+    dots.forEach(function (dot) {
+      dot.addEventListener('click', function () {
+        setSlide(Number(dot.getAttribute('data-slide')) || 0);
+        restartAutoPlay();
+      });
+    });
+
+    if (carousel) {
+      carousel.addEventListener('mouseenter', function () {
+        if (autoTimer) clearInterval(autoTimer);
+      });
+      carousel.addEventListener('mouseleave', function () {
+        restartAutoPlay();
+      });
+    }
+
+    setSlide(0);
+    restartAutoPlay();
+  } catch {
+    container.innerHTML = '<p class="text-center" style="color:#aaa;padding:30px;">Unable to load news articles.</p>';
+  }
 }
 
-function renderNewsCard(n) {
+function renderHomeNewsSlide(n) {
+  const images = parseNewsArticlePhotoPaths(n.photo_path);
+  const imageSrc = images[0] || 'src/images/placeholder.png';
+  const articleHref = n.id ? 'news-article.html?id=' + encodeURIComponent(String(n.id)) : 'news.html';
+
   return `
-    <div class="news-card reveal">
-      <div class="news-img">📰</div>
-      <div class="news-body">
-        <div class="news-category">${escapeHTML(n.category)}</div>
-        <h3>${escapeHTML(n.title)}</h3>
-        <p>${escapeHTML(n.excerpt)}</p>
-        <div class="news-meta">
-          <span>📅 ${n.date}</span>
-          <a href="news.html#${n.id}" style="color:#ff6f00;font-weight:600;">Read more →</a>
+    <article class="home-news-slide">
+      <div class="news-card home-news-card reveal revealed">
+        <a href="${articleHref}" class="news-img home-news-image-link" aria-label="Read ${escapeHTML(n.title || 'article')}">
+          <img src="${escapeHTML(imageSrc)}" alt="${escapeHTML(n.title || 'News article')}" />
+        </a>
+        <div class="news-body home-news-body">
+          <div class="news-category">${escapeHTML(n.category || 'News')}</div>
+          <h3>${escapeHTML(n.title || 'Untitled article')}</h3>
+          <p>${escapeHTML(n.excerpt || 'Read the latest update from Online Tournament Management.')}</p>
+          <div class="news-meta">
+            <span>📅 ${escapeHTML(formatNewsDateForPublic(n.publish_date))}</span>
+            <a href="${articleHref}" class="home-news-readmore">Read more →</a>
+          </div>
         </div>
       </div>
-    </div>
+    </article>
   `;
 }
 
@@ -754,26 +844,31 @@ async function loadPublicAboutPage() {
   const imageEl = document.getElementById('publicAboutImage');
   const teamGridEl = document.getElementById('publicTeamGrid');
 
-  if (!titleEl || !descriptionEl || !imageEl || !teamGridEl) return;
+  if (!titleEl && !descriptionEl && !imageEl && !teamGridEl) return;
 
   try {
-    const [contentRes, membersRes] = await Promise.all([
-      fetch('api/about/read-content.php'),
-      fetch('api/about/members/read.php')
-    ]);
+    const requests = [fetch('api/about/read-content.php')];
+    if (teamGridEl) {
+      requests.push(fetch('api/about/members/read.php'));
+    }
 
-    const [contentJson, membersJson] = await Promise.all([
-      parsePublicApiJson(contentRes),
-      parsePublicApiJson(membersRes)
-    ]);
+    const responses = await Promise.all(requests);
+    const contentJson = await parsePublicApiJson(responses[0]);
+    const membersJson = teamGridEl && responses[1]
+      ? await parsePublicApiJson(responses[1])
+      : null;
 
     if (contentJson.success && contentJson.data) {
       const content = contentJson.data;
-      titleEl.textContent = content.organization_name || 'Online Tournament Management';
-      imageEl.src = content.photo_path || 'src/images/placeholder.png';
+      if (titleEl) {
+        titleEl.textContent = content.organization_name || 'Online Tournament Management';
+      }
+      if (imageEl) {
+        imageEl.src = content.photo_path || 'src/images/placeholder.png';
+      }
 
       const rawDescription = String(content.description || '').trim();
-      if (rawDescription) {
+      if (descriptionEl && rawDescription) {
         const paragraphs = rawDescription
           .split(/\r?\n\s*\r?\n/)
           .map((paragraph) => paragraph.trim())
@@ -789,7 +884,7 @@ async function loadPublicAboutPage() {
       }
     }
 
-    if (membersJson.success && Array.isArray(membersJson.data) && membersJson.data.length) {
+    if (teamGridEl && membersJson && membersJson.success && Array.isArray(membersJson.data) && membersJson.data.length) {
       teamGridEl.innerHTML = membersJson.data.map((member) => `
         <div class="reveal revealed" style="text-align:center;">
           <div style="width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;overflow:hidden;background:linear-gradient(135deg,var(--primary),var(--accent));">
@@ -810,23 +905,55 @@ async function loadPublicContactInfo() {
   const addressEl = document.getElementById('contactAddressDisplay');
   const phoneEl   = document.getElementById('contactPhoneDisplay');
   const emailEl   = document.getElementById('contactEmailDisplay');
+  const footerAddressEls = document.querySelectorAll('[data-footer-contact-address]');
+  const footerPhoneEls = document.querySelectorAll('[data-footer-contact-phone]');
+  const footerEmailEls = document.querySelectorAll('[data-footer-contact-email]');
 
-  if (!addressEl || !phoneEl || !emailEl) return;
+  if (!addressEl && !phoneEl && !emailEl && !footerAddressEls.length && !footerPhoneEls.length && !footerEmailEls.length) return;
 
   try {
     const res = await fetch('api/contact/read-info.php');
     const data = await res.json();
 
     if (data.success) {
-      addressEl.innerHTML = data.address
+      const addressHtml = data.address
         ? escapeHTML(data.address).replace(/\n/g, '<br>')
-        : addressEl.innerHTML;
-      phoneEl.innerHTML = data.phone
+        : '';
+      const phoneHtml = data.phone
         ? escapeHTML(data.phone).replace(/\n/g, '<br>')
-        : phoneEl.innerHTML;
-      emailEl.innerHTML = data.email
+        : '';
+      const emailHtml = data.email
         ? escapeHTML(data.email).replace(/\n/g, '<br>')
-        : emailEl.innerHTML;
+        : '';
+
+      if (addressEl && addressHtml) {
+        addressEl.innerHTML = addressHtml;
+      }
+      if (phoneEl && phoneHtml) {
+        phoneEl.innerHTML = phoneHtml;
+      }
+      if (emailEl && emailHtml) {
+        emailEl.innerHTML = emailHtml;
+      }
+
+      footerAddressEls.forEach(function (el) {
+        if (!addressHtml) return;
+        el.innerHTML = '&#128205; ' + addressHtml;
+      });
+
+      footerPhoneEls.forEach(function (el) {
+        if (!phoneHtml) return;
+        const phoneText = String(data.phone).split(/\r?\n/).map(function (part) { return part.trim(); }).filter(Boolean)[0] || String(data.phone).trim();
+        el.innerHTML = '&#128222; ' + phoneHtml;
+        el.setAttribute('href', 'tel:' + phoneText.replace(/[^\d+]/g, ''));
+      });
+
+      footerEmailEls.forEach(function (el) {
+        if (!emailHtml) return;
+        const emailText = String(data.email).split(/\r?\n/).map(function (part) { return part.trim(); }).filter(Boolean)[0] || String(data.email).trim();
+        el.innerHTML = '&#9993; ' + emailHtml;
+        el.setAttribute('href', 'mailto:' + emailText);
+      });
     }
   } catch {
     // Keep existing fallback content already in the markup.

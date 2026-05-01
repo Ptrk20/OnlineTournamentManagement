@@ -3,19 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Register User — OTM Admin</title>
+  <title>Team Registrations — OTM</title>
   <link rel="stylesheet" href="../css/style.css" />
   <link rel="stylesheet" href="../css/admin.css" />
 </head>
-<body class="admin-body">
+<body class="admin-body" id="adminRegistration">
 
   <aside class="sidebar" id="adminSidebar">
     <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">OTM Admin</span><span class="sub">Tournament Management</span></div></div>
-    <div class="sidebar-user"><div class="avatar" data-user-initials>A</div><div><span class="u-name" data-user-name>Administrator</span><span class="u-role" data-user-role>Admin</span></div></div>
     <nav class="sidebar-nav">
       <div class="nav-label">Main</div>
       <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
-      <a href="register.html" class="active"><span class="nav-icon">&#128100;</span> Teams</a>
+      <a href="register.html" class="active"><span class="nav-icon">&#128100;</span> Registration</a>
       <a href="events.html"><span class="nav-icon">&#127942;</span> Events</a>
       <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
       <a href="announcement.html"><span class="nav-icon">&#128276;</span> Announcements</a>
@@ -34,7 +33,7 @@
     <header class="admin-topbar">
       <div class="topbar-left">
         <button class="topbar-toggle" id="sidebarToggle"><span></span><span></span><span></span></button>
-        <span class="page-title">Register New User</span>
+        <span class="page-title">Team Registrations</span>
       </div>
       <div class="topbar-right">
         <div class="topbar-user">
@@ -55,89 +54,254 @@
     </header>
 
     <main class="admin-content">
-      <div style="max-width:720px;">
-        <div class="admin-card">
-          <div class="admin-card-header">
-            <h3><span class="ch-icon">&#128100;</span> Register New User</h3>
-            <a href="manage-users.html" class="btn btn-dark" style="font-size:.8rem;padding:7px 14px;">&#8592; All Users</a>
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128221;</span> Team Registrations</h3>
+          <div class="admin-card-actions">
+            <input type="text" id="registrationSearch" placeholder="Search team or event..." style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.85rem;width:240px;" />
+            <button class="btn" id="manageCoursesBtn" style="background:#e8eaf6;color:#1a237e;font-size:.82rem;padding:8px 14px;">&#127891; Manage Courses</button>
+            <button class="btn btn-primary" id="addRegistrationBtn" style="font-size:.82rem;padding:8px 16px;">+ Fill Up Registration Form</button>
           </div>
-          <div class="admin-card-body">
-            <form id="registerUserForm" novalidate>
-              <input type="hidden" id="userId" value="" />
-              <div class="admin-form-grid">
-                <div class="admin-form-group">
-                  <label>Full Name <span style="color:red;">*</span></label>
-                  <input type="text" id="userName" placeholder="Full name" required />
-                  <span class="error-text"></span>
-                </div>
-                <div class="admin-form-group">
-                  <label>Username <span style="color:red;">*</span></label>
-                  <input type="text" id="userUsername" placeholder="Username" required />
-                </div>
-                <div class="admin-form-group">
-                  <label>Email Address <span style="color:red;">*</span></label>
-                  <input type="email" id="userEmail" placeholder="email@example.com" required />
-                </div>
-                <div class="admin-form-group">
-                  <label>Phone Number</label>
-                  <input type="tel" id="userPhone" placeholder="09XXXXXXXXX" />
-                  <span class="help-text">Used for SMS notifications</span>
-                </div>
-                <div class="admin-form-group">
-                  <label>Role <span style="color:red;">*</span></label>
-                  <select id="userRole">
-                    <option value="Administrator">Administrator</option>
-                    <option value="Moderator">Moderator</option>
-                    <option value="Organizer">Organizer</option>
-                    <option value="Staff">Staff</option>
-                  </select>
-                </div>
-                <div class="admin-form-group">
-                  <label>Status</label>
-                  <select id="userStatus">
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
-                <div class="admin-form-group">
-                  <label>Password <span style="color:red;">*</span></label>
-                  <input type="password" id="userPassword" placeholder="Enter password" required />
-                  <span class="help-text">Minimum 8 characters</span>
-                </div>
-                <div class="admin-form-group">
-                  <label>Confirm Password <span style="color:red;">*</span></label>
-                  <input type="password" id="userPasswordConfirm" placeholder="Repeat password" required />
-                </div>
-              </div>
-              <div id="registerError" style="display:none;background:#ffebee;color:#c62828;border-radius:8px;padding:11px 14px;font-size:.85rem;margin-top:10px;"></div>
-              <div style="margin-top:24px;display:flex;gap:12px;">
-                <button type="submit" id="saveUserBtn" class="btn btn-primary">Register User &#128100;</button>
-                <button type="reset" class="btn" style="background:#f0f2f5;color:#555;">Reset</button>
-              </div>
-            </form>
-          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Team Name</th>
+                <th>Event</th>
+                <th>Category</th>
+                <th>Representative</th>
+                <th>Submitted</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="registrationsTableBody">
+              <tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
   </div>
 
+  <div class="modal-overlay" id="registrationModal">
+    <div class="modal" style="max-width:980px;">
+      <div class="modal-header">
+        <h3 id="registrationModalTitle">Team Registration Form</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="registrationId" />
+        <div class="registration-form-sections">
+          <section class="registration-section">
+            <h4>1. Representative Information</h4>
+            <div class="admin-form-grid">
+              <div class="admin-form-group">
+                <label>First Name <span style="color:red;">*</span></label>
+                <input type="text" id="repFirstName" placeholder="First name" />
+              </div>
+              <div class="admin-form-group">
+                <label>Last Name <span style="color:red;">*</span></label>
+                <input type="text" id="repLastName" placeholder="Last name" />
+              </div>
+              <div class="admin-form-group">
+                <label>Student ID <span style="color:red;">*</span></label>
+                <input type="text" id="repStudentId" placeholder="Student ID" />
+              </div>
+              <div class="admin-form-group">
+                <label>Course <span style="color:red;">*</span></label>
+                <select id="repCourse">
+                  <option value="">Loading courses...</option>
+                </select>
+              </div>
+              <div class="admin-form-group">
+                <label>Contact Number <span style="color:red;">*</span></label>
+                <input type="text" id="regContact" placeholder="09XXXXXXXXX" />
+              </div>
+              <div class="admin-form-group">
+                <label>Email Address <span style="color:red;">*</span></label>
+                <input type="email" id="regEmail" placeholder="name@example.com" />
+              </div>
+            </div>
+          </section>
+
+          <section class="registration-section">
+            <h4>2. Sport, Category, and Event</h4>
+            <div class="admin-form-grid">
+              <div class="admin-form-group">
+                <label>Team Name <span style="color:red;">*</span></label>
+                <input type="text" id="regTeamName" placeholder="e.g. Manila Eagles" />
+              </div>
+              <div class="admin-form-group">
+                <label>Sport <span style="color:red;">*</span></label>
+                <select id="regSportId">
+                  <option value="">Loading sports...</option>
+                </select>
+              </div>
+              <div class="admin-form-group">
+                <label>Category <span style="color:red;">*</span></label>
+                <select id="regCategory">
+                  <option value="">Select category</option>
+                  <option value="Mens">Mens</option>
+                  <option value="Womens">Womens</option>
+                  <option value="Open">Open</option>
+                </select>
+              </div>
+              <div class="admin-form-group">
+                <label>Event <span style="color:red;">*</span></label>
+                <select id="regEventId">
+                  <option value="">Select sport and category first</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <section class="registration-section" id="regParticipantsSection" style="display:none;">
+            <h4>3. Coach/Manager and Players</h4>
+            <div class="admin-form-grid">
+              <div class="admin-form-group full">
+                <label style="margin-bottom:10px;">Coach / Manager</label>
+              </div>
+              <div class="admin-form-group">
+                <label>Last Name <span style="color:red;">*</span></label>
+                <input type="text" id="coachLastName" placeholder="Last name" />
+              </div>
+              <div class="admin-form-group">
+                <label>First Name <span style="color:red;">*</span></label>
+                <input type="text" id="coachFirstName" placeholder="First name" />
+              </div>
+            </div>
+
+            <div class="registration-players-block">
+              <div class="registration-players-header">
+                <label>Players</label>
+              </div>
+              <div class="admin-form-grid" style="grid-template-columns:repeat(4, 1fr);align-items:end;">
+                <div class="admin-form-group">
+                  <label>Last Name</label>
+                  <input type="text" id="playerLastName" placeholder="Last name" />
+                </div>
+                <div class="admin-form-group">
+                  <label>First Name</label>
+                  <input type="text" id="playerFirstName" placeholder="First name" />
+                </div>
+                <div class="admin-form-group">
+                  <label>Student ID</label>
+                  <input type="text" id="playerStudentId" placeholder="Student ID" />
+                </div>
+                <div class="admin-form-group">
+                  <button type="button" class="btn" id="addPlayerBtn" style="background:#e8eaf6;color:#1a237e;width:100%;">+ Add Player</button>
+                </div>
+              </div>
+
+              <div class="admin-table-wrap" style="margin-top:10px;">
+                <table class="admin-table">
+                  <thead>
+                    <tr><th>#</th><th>Last Name</th><th>First Name</th><th>Student ID</th><th>Course</th><th>Actions</th></tr>
+                  </thead>
+                  <tbody id="regPlayersTableBody">
+                    <tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No players added yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="registration-section">
+            <h4>4. Upload Documents (Optional)</h4>
+            <div class="registration-doc-upload">
+              <div class="registration-doc-dropzone" id="regDocDropzone">
+                <div class="registration-doc-icon">&#8682;</div>
+                <button type="button" class="btn btn-primary" id="regDocBrowseBtn" style="padding:8px 26px;">Browse</button>
+                <div class="registration-doc-caption">Drop file(s) here</div>
+                <div class="registration-doc-help"><span style="color:#c62828;">*</span> File supported .png, .jpg, .jpeg, .webp, .pdf</div>
+                <input type="file" id="regDocuments" accept=".png,.jpg,.jpeg,.webp,.pdf" multiple style="display:none;" />
+              </div>
+              <div class="registration-doc-list-wrap">
+                <h5>Uploaded Files</h5>
+                <ul id="regDocList" class="registration-doc-list">
+                  <li class="empty">No files selected.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <div class="admin-form-grid">
+            <div class="admin-form-group full" id="registrationStatusGroup">
+              <label>Status</label>
+              <select id="registrationStatus">
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+            <div class="admin-form-group full">
+              <label>Request Notes</label>
+              <textarea id="regNotes" rows="3" placeholder="Additional details about this registration..."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" onclick="closeModal('registrationModal')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveRegistrationBtn">Submit Registration</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="registrationViewModal">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <h3>Registration Request</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" id="registrationViewBody">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="downloadRegistrationPdfBtn" style="background:#e8eaf6;color:#1a237e;">&#128196; Download PDF</button>
+        <button type="button" class="btn btn-cancel" onclick="closeModal('registrationViewModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="coursesModal">
+    <div class="modal" style="max-width:620px;">
+      <div class="modal-header">
+        <h3>Manage Courses</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="courseId" />
+        <div class="admin-form-grid" style="grid-template-columns:1fr auto;align-items:end;">
+          <div class="admin-form-group">
+            <label>Course Name <span style="color:red;">*</span></label>
+            <input type="text" id="courseName" placeholder="e.g. BSIT" maxlength="180" />
+          </div>
+          <div class="admin-form-group" style="display:flex;gap:8px;">
+            <button type="button" class="btn" id="resetCourseBtn" style="background:#f0f2f5;color:#555;">Reset</button>
+            <button type="button" class="btn btn-primary" id="saveCourseBtn">Save Course</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap" style="margin-top:16px;">
+          <table class="admin-table">
+            <thead>
+              <tr><th>#</th><th>Course Name</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="coursesTableBody">
+              <tr><td colspan="3" style="text-align:center;color:#aaa;padding:20px;">Loading courses...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" onclick="closeModal('coursesModal')">Close</button>
+      </div>
+    </div>
+  </div>
   <script src="../js/main.js"></script>
   <script src="../js/auth.js"></script>
   <script src="../js/admin.js"></script>
-  <script>
-    document.getElementById('registerUserForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const pwd  = document.getElementById('userPassword').value;
-      const pwd2 = document.getElementById('userPasswordConfirm').value;
-      const err  = document.getElementById('registerError');
-
-      if (pwd.length < 8) { err.textContent = 'Password must be at least 8 characters.'; err.style.display = 'block'; return; }
-      if (pwd !== pwd2)   { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
-      err.style.display = 'none';
-
-      // Delegate to admin.js saveUser()
-      saveUser();
-    });
-  </script>
 </body>
 </html>

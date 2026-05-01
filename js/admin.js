@@ -5,6 +5,14 @@
 
 'use strict';
 
+const REGISTRATIONS_STORAGE_KEY = 'otm_team_registrations';
+let editingCourseId = null;
+let registrationEventsCache = [];
+let registrationSportsCache = [];
+let registrationPlayersDraft = [];
+let registrationDocumentsDraft = [];
+let currentViewedRegistration = null;
+
 /* =============================================
    ADMIN BOOTSTRAP — runs on every admin page
    ============================================= */
@@ -15,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!session) return;
 
   AuthModule.populateAdminUI(session);
+  AuthModule.applyRoleAccess(session);
 
   // ── Sidebar toggle ────────────────────────────
   const sidebarToggle = document.getElementById('sidebarToggle');
@@ -75,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Init page-specific modules ────────────────
   initDashboard();
+  initRegistrationManager();
   initEventManager();
   initNewsManager();
   initUserManager();
@@ -99,12 +109,17 @@ function closeModal(id) {
 
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal-overlay')) {
+    if (e.target.id === 'sportsModal') clearSportForm();
     e.target.classList.remove('open');
     document.body.style.overflow = '';
   }
   if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
     const modal = e.target.closest('.modal-overlay');
-    if (modal) { modal.classList.remove('open'); document.body.style.overflow = ''; }
+    if (modal) {
+      if (modal.id === 'sportsModal') clearSportForm();
+      modal.classList.remove('open');
+      document.body.style.overflow = '';
+    }
   }
 });
 
@@ -239,114 +254,510 @@ function drawEventChart() {
 /* =============================================
    EVENTS MANAGER
    ============================================= */
+let eventsCache = [];
+
+async function loadSportsDropdown() {
+  const sel = document.getElementById('eventSportsId');
+  if (!sel) return;
+
+  try {
+    const res  = await fetch('../api/sports/read.php');
+    const json = await res.json();
+    const rows = (json.success && Array.isArray(json.data)) ? json.data : [];
+
+    const opts = rows
+      .filter(s => Number(s.is_active) === 1)
+      .map(s => {
+        const name = s.sport_name || s.sports_name || '';
+        return `<option value="${Number(s.id)}">${escapeAdminHTML(name)}</option>`;
+      })
+      .join('');
+
+    sel.innerHTML = '<option value="">— Select Sport —</option>' + opts;
+  } catch (err) {
+    console.error('loadSportsDropdown error:', err);
+  }
+}
+
 function initEventManager() {
   const page = document.getElementById('adminEvents');
   if (!page) return;
 
   renderEventsTable();
 
-  // Open add modal
+  // Open add modal — also refresh sports dropdown
   const addBtn = document.getElementById('addEventBtn');
-  if (addBtn) addBtn.addEventListener('click', () => { clearEventForm(); openModal('eventModal'); });
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    clearEventForm();
+    await loadSportsDropdown();
+    openModal('eventModal');
+  });
 
   // Save event
   const saveBtn = document.getElementById('saveEventBtn');
   if (saveBtn) saveBtn.addEventListener('click', saveEvent);
 
-  // Search
+  // Search (client-side filter against cached data)
   const search = document.getElementById('eventSearch');
   if (search) search.addEventListener('input', () => renderEventsTable(search.value));
+
+  // Sports manager
+  const manageSportsBtn = document.getElementById('manageSportsBtn');
+  if (manageSportsBtn) {
+    manageSportsBtn.addEventListener('click', async () => {
+      openModal('sportsModal');
+      clearSportForm();
+      await renderSportsTable();
+    });
+  }
+
+  const saveSportBtn = document.getElementById('saveSportBtn');
+  if (saveSportBtn) saveSportBtn.addEventListener('click', saveSport);
+
+  const resetSportFormBtn = document.getElementById('resetSportFormBtn');
+  if (resetSportFormBtn) resetSportFormBtn.addEventListener('click', clearSportForm);
+
+  const sportImageBrowse = document.getElementById('sportImageBrowse');
+  const sportImageRemove = document.getElementById('sportImageRemove');
+  const sportImageUpload = document.getElementById('sportImageUpload');
+
+  if (sportImageBrowse && sportImageUpload) {
+    sportImageBrowse.addEventListener('click', () => sportImageUpload.click());
+  }
+
+  if (sportImageUpload) {
+    sportImageUpload.addEventListener('change', () => {
+      const file = sportImageUpload.files && sportImageUpload.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        adminToast('Please select a valid image file.', 'error');
+        sportImageUpload.value = '';
+        return;
+      }
+
+      if (sportPreviewPath && sportPreviewPath.startsWith('blob:')) {
+        URL.revokeObjectURL(sportPreviewPath);
+      }
+
+      sportPendingPhotoFile = file;
+      sportPreviewPath = URL.createObjectURL(file);
+      setSportImagePreview(sportPreviewPath);
+    });
+  }
+
+  if (sportImageRemove) {
+    sportImageRemove.addEventListener('click', () => {
+      if (sportPreviewPath && sportPreviewPath.startsWith('blob:')) {
+        URL.revokeObjectURL(sportPreviewPath);
+      }
+      sportPendingPhotoFile = null;
+      sportPreviewPath = '';
+      const photoEl = document.getElementById('sportPhotoPath');
+      if (photoEl) photoEl.value = '';
+      if (sportImageUpload) sportImageUpload.value = '';
+      setSportImagePreview('');
+    });
+  }
 }
 
-function renderEventsTable(filter = '') {
+function formatEventDate(dtStr) {
+  if (!dtStr) return '—';
+  const d = new Date(dtStr);
+  if (isNaN(d)) return dtStr;
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
+}
+
+async function renderEventsTable(filter = '') {
   const tbody = document.getElementById('eventsTableBody');
   if (!tbody) return;
 
-  const events = DataStore.getEvents().filter(ev =>
-    !filter || ev.title.toLowerCase().includes(filter.toLowerCase())
-  );
+  // On first load (no cache yet) fetch from API; on search use cache
+  if (!filter && eventsCache.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>';
+    try {
+      const res  = await fetch('../api/events/read.php');
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Failed to load events.');
+      eventsCache = Array.isArray(json.data) ? json.data : [];
+    } catch (err) {
+      console.error('renderEventsTable fetch error:', err);
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#e53935;padding:30px;">Failed to load events.</td></tr>`;
+      return;
+    }
+  }
 
-  if (!events.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">No events found.</td></tr>';
+  // Full refresh (no filter passed after save/delete)
+  if (!filter) {
+    try {
+      const res  = await fetch('../api/events/read.php');
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Failed to load events.');
+      eventsCache = Array.isArray(json.data) ? json.data : [];
+    } catch (err) { /* keep stale cache */ }
+  }
+
+  const filtered = filter
+    ? eventsCache.filter(ev => ev.title.toLowerCase().includes(filter.toLowerCase()))
+    : eventsCache;
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">No events found.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = events.map((ev, i) => `
+  tbody.innerHTML = filtered.map((ev, i) => `
     <tr>
       <td>${i + 1}</td>
       <td><strong>${escapeAdminHTML(ev.title)}</strong></td>
-      <td>${escapeAdminHTML(ev.date)}</td>
+      <td>${escapeAdminHTML(ev.sport_name || '—')}</td>
+      <td>${escapeAdminHTML(ev.category || '—')}</td>
+      <td>${formatEventDate(ev.event_start_date)}</td>
+      <td>${formatEventDate(ev.event_end_date)}</td>
       <td>${escapeAdminHTML(ev.location)}</td>
       <td><span class="badge badge-${statusBadge(ev.status)}">${escapeAdminHTML(ev.status)}</span></td>
       <td>
         <div class="action-btns">
-          <button class="action-btn edit" title="Edit" onclick="editEvent('${ev.id}')">✏️</button>
-          <button class="action-btn del"  title="Delete" onclick="deleteEvent('${ev.id}')">🗑️</button>
+          <button class="action-btn edit" title="Edit" onclick="editEvent(${Number(ev.id)})">✏️</button>
+          <button class="action-btn del"  title="Delete" onclick="deleteEvent(${Number(ev.id)})">🗑️</button>
         </div>
       </td>
     </tr>
   `).join('');
 }
 
-function saveEvent() {
-  const id    = document.getElementById('eventId')?.value;
-  const title = document.getElementById('eventTitle')?.value.trim();
-  const date  = document.getElementById('eventDate')?.value;
-  const loc   = document.getElementById('eventLocation')?.value.trim();
-  const teams = document.getElementById('eventTeams')?.value.trim();
-  const desc  = document.getElementById('eventDesc')?.value.trim();
-  const stat  = document.getElementById('eventStatus')?.value;
+async function saveEvent() {
+  const id        = document.getElementById('eventId')?.value;
+  const title     = document.getElementById('eventTitle')?.value.trim() || '';
+  const sportsId  = Number(document.getElementById('eventSportsId')?.value || '0');
+  const category  = document.getElementById('eventCategory')?.value.trim() || '';
+  const startDate = document.getElementById('eventStartDate')?.value || '';
+  const endDate   = document.getElementById('eventEndDate')?.value || '';
+  const location  = document.getElementById('eventLocation')?.value.trim() || '';
+  const teams     = document.getElementById('eventTeams')?.value || '';
+  const desc      = document.getElementById('eventDesc')?.value.trim() || '';
+  const status    = document.getElementById('eventStatus')?.value || 'Upcoming';
 
-  if (!title || !date || !loc) { adminToast('Please fill in required fields.', 'error'); return; }
-
-  const events = DataStore.getEvents();
-
-  if (id) {
-    const idx = events.findIndex(e => e.id === id);
-    if (idx > -1) events[idx] = { ...events[idx], title, date, location: loc, teams, description: desc, status: stat };
-  } else {
-    events.unshift({ id: 'ev' + Date.now(), title, date, location: loc, teams, description: desc, status: stat });
+  if (!title || !sportsId || !category || !startDate || !endDate || !location) {
+    adminToast('Please fill in all required fields.', 'error');
+    return;
   }
 
-  DataStore.saveEvents(events);
-  renderEventsTable();
-  closeModal('eventModal');
-  adminToast(id ? 'Event updated successfully.' : 'Event added successfully.');
+  if (new Date(endDate) < new Date(startDate)) {
+    adminToast('End date must not be before start date.', 'error');
+    return;
+  }
+
+  const payload = {
+    id: id ? Number(id) : undefined,
+    title,
+    sports_id: sportsId,
+    category,
+    event_start_date: startDate,
+    event_end_date:   endDate,
+    location,
+    teams_count: teams !== '' ? Number(teams) : null,
+    description: desc || null,
+    status
+  };
+
+  const endpoint = id ? '../api/events/update.php' : '../api/events/create.php';
+
+  try {
+    const res  = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to save event.');
+
+    adminToast(id ? 'Event updated successfully.' : 'Event created successfully.');
+    closeModal('eventModal');
+    eventsCache = [];           // force full refresh
+    await renderEventsTable();
+  } catch (err) {
+    console.error('saveEvent error:', err);
+    adminToast(err.message || 'Failed to save event.', 'error');
+  }
 }
 
-window.editEvent = function(id) {
-  const ev = DataStore.getEvents().find(e => e.id === id);
+window.editEvent = async function(id) {
+  const ev = eventsCache.find(e => Number(e.id) === Number(id));
   if (!ev) return;
 
-  document.getElementById('eventId').value       = ev.id;
-  document.getElementById('eventTitle').value    = ev.title;
-  document.getElementById('eventDate').value     = ev.date;
-  document.getElementById('eventLocation').value = ev.location;
-  document.getElementById('eventTeams').value    = ev.teams;
-  document.getElementById('eventDesc').value     = ev.description;
-  document.getElementById('eventStatus').value   = ev.status;
+  clearEventForm();
+  await loadSportsDropdown();
+
+  document.getElementById('eventId').value          = ev.id;
+  document.getElementById('eventTitle').value       = ev.title || '';
+  document.getElementById('eventSportsId').value    = ev.sports_id || '';
+  document.getElementById('eventCategory').value    = ev.category || '';
+  // datetime-local expects "YYYY-MM-DDTHH:MM"
+  document.getElementById('eventStartDate').value   = (ev.event_start_date || '').replace(' ', 'T').slice(0, 16);
+  document.getElementById('eventEndDate').value     = (ev.event_end_date || '').replace(' ', 'T').slice(0, 16);
+  document.getElementById('eventLocation').value    = ev.location || '';
+  document.getElementById('eventTeams').value       = ev.teams_count != null ? ev.teams_count : '';
+  document.getElementById('eventDesc').value        = ev.description || '';
+  document.getElementById('eventStatus').value      = ev.status || 'Upcoming';
   document.getElementById('eventModalTitle').textContent = 'Edit Event';
 
   openModal('eventModal');
 };
 
-window.deleteEvent = function(id) {
+window.deleteEvent = async function(id) {
   if (!confirm('Delete this event? This action cannot be undone.')) return;
-  const events = DataStore.getEvents().filter(e => e.id !== id);
-  DataStore.saveEvents(events);
-  renderEventsTable();
-  adminToast('Event deleted.', 'warning');
+
+  try {
+    const res  = await fetch('../api/events/delete.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: Number(id) })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to delete event.');
+
+    adminToast('Event deleted.', 'warning');
+    eventsCache = [];           // force full refresh
+    await renderEventsTable();
+  } catch (err) {
+    console.error('deleteEvent error:', err);
+    adminToast(err.message || 'Failed to delete event.', 'error');
+  }
 };
 
 function clearEventForm() {
-  ['eventId','eventTitle','eventDate','eventLocation','eventTeams','eventDesc'].forEach(i => {
+  ['eventId', 'eventTitle', 'eventCategory', 'eventStartDate',
+   'eventEndDate', 'eventLocation', 'eventTeams', 'eventDesc'].forEach(i => {
     const el = document.getElementById(i);
     if (el) el.value = '';
   });
-  const st = document.getElementById('eventStatus');
-  if (st) st.value = 'Upcoming';
-  const title = document.getElementById('eventModalTitle');
-  if (title) title.textContent = 'Add New Event';
+  const sport  = document.getElementById('eventSportsId');
+  if (sport)  sport.value  = '';
+  const status = document.getElementById('eventStatus');
+  if (status) status.value = 'Upcoming';
+  const titleEl = document.getElementById('eventModalTitle');
+  if (titleEl) titleEl.textContent = 'Add New Event';
+}
+
+let sportsCache = [];
+const SPORT_PLACEHOLDER_PREVIEW = '../src/images/placeholder.png';
+let sportPendingPhotoFile = null;
+let sportPreviewPath = '';
+
+async function renderSportsTable() {
+  const tbody = document.getElementById('sportsTableBody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">Loading...</td></tr>';
+
+  try {
+    const res = await fetch('../api/sports/read.php');
+    const json = await res.json();
+
+    if (!json.success) {
+      throw new Error(json.message || 'Failed to load sports.');
+    }
+
+    const rows = Array.isArray(json.data) ? json.data : [];
+    sportsCache = rows.map(normalizeSportRow);
+
+    if (!sportsCache.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No sports found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = sportsCache.map((sport, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeAdminHTML(sport.sport_code || '—')}</td>
+        <td><strong>${escapeAdminHTML(sport.sport_name || '')}</strong></td>
+        <td>${escapeAdminHTML(sport.photo_path || '—')}</td>
+        <td><span class="badge badge-${sport.is_active ? 'success' : 'danger'}">${sport.is_active ? 'Active' : 'Inactive'}</span></td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn edit" title="Edit" onclick="editSport(${Number(sport.id)})">✏️</button>
+            <button class="action-btn del" title="Delete" onclick="deleteSport(${Number(sport.id)})">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('renderSportsTable error:', err);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#e53935;padding:20px;">Failed to load sports.</td></tr>';
+  }
+}
+
+function normalizeSportRow(row) {
+  const src = row || {};
+  return {
+    id: Number(src.id || 0),
+    sport_code: String(src.sport_code || '').trim(),
+    sport_name: String(src.sport_name || src.sports_name || '').trim(),
+    photo_path: String(src.photo_path || src.icon_path || '').trim(),
+    is_active: Number(src.is_active ?? 1) === 1
+  };
+}
+
+function toSportPreviewSrc(path) {
+  if (!path) return SPORT_PLACEHOLDER_PREVIEW;
+  if (path.startsWith('blob:')) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith('../')) return path;
+  if (path.startsWith('src/')) return '../' + path;
+  return path;
+}
+
+function setSportImagePreview(path) {
+  const preview = document.getElementById('sportImagePreview');
+  if (!preview) return;
+  preview.src = toSportPreviewSrc(path);
+}
+
+async function uploadSportPhoto(file) {
+  const formData = new FormData();
+  formData.append('photo', file);
+
+  const res = await fetch('../api/sports/upload-photo.php', {
+    method: 'POST',
+    body: formData
+  });
+  const json = await res.json();
+
+  if (!json.success || !json.path) {
+    throw new Error(json.message || 'Failed to upload sport image.');
+  }
+
+  return json.path;
+}
+
+async function saveSport() {
+  const id = document.getElementById('sportId')?.value;
+  const sportCode = document.getElementById('sportCode')?.value.trim() || '';
+  const sportName = document.getElementById('sportName')?.value.trim() || '';
+  const photoEl = document.getElementById('sportPhotoPath');
+  let photoPath = photoEl?.value.trim() || '';
+  const isActive = Number(document.getElementById('sportIsActive')?.value || '1') === 1 ? 1 : 0;
+
+  if (!sportName) {
+    adminToast('Sport name is required.', 'error');
+    return;
+  }
+
+  const endpoint = id ? '../api/sports/update.php' : '../api/sports/create.php';
+  const payload = {
+    id: id ? Number(id) : undefined,
+    sport_code: sportCode || null,
+    sport_name: sportName,
+    sports_name: sportName,
+    photo_path: null,
+    is_active: isActive
+  };
+
+  try {
+    if (sportPendingPhotoFile) {
+      photoPath = await uploadSportPhoto(sportPendingPhotoFile);
+      sportPendingPhotoFile = null;
+
+      const sportImageUpload = document.getElementById('sportImageUpload');
+      if (sportImageUpload) sportImageUpload.value = '';
+    }
+
+    payload.photo_path = photoPath || null;
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to save sport.');
+
+    if (photoEl) photoEl.value = photoPath || '';
+    sportPreviewPath = photoPath || '';
+    setSportImagePreview(sportPreviewPath);
+
+    adminToast(id ? 'Sport updated.' : 'Sport created successfully.');
+    clearSportForm();
+    await renderSportsTable();
+  } catch (err) {
+    console.error('saveSport error:', err);
+    adminToast(err.message || 'Failed to save sport.', 'error');
+  }
+}
+
+window.editSport = function(id) {
+  const sport = sportsCache.find((item) => Number(item.id) === Number(id));
+  if (!sport) return;
+
+  const idEl = document.getElementById('sportId');
+  const codeEl = document.getElementById('sportCode');
+  const nameEl = document.getElementById('sportName');
+  const photoEl = document.getElementById('sportPhotoPath');
+  const activeEl = document.getElementById('sportIsActive');
+  const sportImageUpload = document.getElementById('sportImageUpload');
+
+  if (idEl) idEl.value = sport.id;
+  if (codeEl) codeEl.value = sport.sport_code || '';
+  if (nameEl) nameEl.value = sport.sport_name || '';
+  if (photoEl) photoEl.value = sport.photo_path || '';
+  if (activeEl) activeEl.value = sport.is_active ? '1' : '0';
+
+  if (sportPreviewPath && sportPreviewPath.startsWith('blob:')) {
+    URL.revokeObjectURL(sportPreviewPath);
+  }
+  sportPendingPhotoFile = null;
+  sportPreviewPath = sport.photo_path || '';
+  setSportImagePreview(sportPreviewPath);
+  if (sportImageUpload) sportImageUpload.value = '';
+};
+
+window.deleteSport = async function(id) {
+  if (!confirm('Delete this sport? This action cannot be undone.')) return;
+
+  try {
+    const res = await fetch('../api/sports/delete.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: Number(id) })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to delete sport.');
+
+    adminToast('Sport deleted.', 'warning');
+    if (String(document.getElementById('sportId')?.value || '') === String(id)) {
+      clearSportForm();
+    }
+    await renderSportsTable();
+  } catch (err) {
+    console.error('deleteSport error:', err);
+    adminToast(err.message || 'Failed to delete sport.', 'error');
+  }
+};
+
+function clearSportForm() {
+  const idEl = document.getElementById('sportId');
+  const codeEl = document.getElementById('sportCode');
+  const nameEl = document.getElementById('sportName');
+  const photoEl = document.getElementById('sportPhotoPath');
+  const activeEl = document.getElementById('sportIsActive');
+  const sportImageUpload = document.getElementById('sportImageUpload');
+
+  if (sportPreviewPath && sportPreviewPath.startsWith('blob:')) {
+    URL.revokeObjectURL(sportPreviewPath);
+  }
+  sportPendingPhotoFile = null;
+  sportPreviewPath = '';
+
+  if (idEl) idEl.value = '';
+  if (codeEl) codeEl.value = '';
+  if (nameEl) nameEl.value = '';
+  if (photoEl) photoEl.value = '';
+  if (activeEl) activeEl.value = '1';
+  if (sportImageUpload) sportImageUpload.value = '';
+  setSportImagePreview('');
 }
 
 /* =============================================
@@ -717,6 +1128,1025 @@ async function buildNewsPhotoPathValue() {
 }
 
 /* =============================================
+   REGISTRATION MANAGER
+   ============================================= */
+function initRegistrationManager() {
+  const page = document.getElementById('adminRegistration');
+  if (!page) return;
+
+  const session = AuthModule.getSession();
+  if (!session) return;
+
+  const addBtn = document.getElementById('addRegistrationBtn');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      clearRegistrationForm(session);
+      openModal('registrationModal');
+    });
+  }
+
+  const saveBtn = document.getElementById('saveRegistrationBtn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => saveRegistration(session));
+  }
+
+  const sportSelect = document.getElementById('regSportId');
+  if (sportSelect) {
+    sportSelect.addEventListener('change', handleRegistrationSelectionChange);
+  }
+
+  const categorySelect = document.getElementById('regCategory');
+  if (categorySelect) {
+    categorySelect.addEventListener('change', handleRegistrationSelectionChange);
+  }
+
+  const eventSelect = document.getElementById('regEventId');
+  if (eventSelect) {
+    eventSelect.addEventListener('change', toggleRegistrationParticipantsSection);
+  }
+
+  const addPlayerBtn = document.getElementById('addPlayerBtn');
+  if (addPlayerBtn) {
+    addPlayerBtn.addEventListener('click', addRegistrationPlayer);
+  }
+
+  const repCourseSelect = document.getElementById('repCourse');
+  if (repCourseSelect) {
+    repCourseSelect.addEventListener('change', syncPlayersCourseFromRepresentative);
+  }
+
+  const docBrowseBtn = document.getElementById('regDocBrowseBtn');
+  const docInput = document.getElementById('regDocuments');
+  if (docBrowseBtn && docInput) {
+    docBrowseBtn.addEventListener('click', () => docInput.click());
+    docInput.addEventListener('change', () => {
+      addRegistrationDocuments(docInput.files);
+      docInput.value = '';
+    });
+  }
+
+  const docDropzone = document.getElementById('regDocDropzone');
+  if (docDropzone) {
+    docDropzone.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      docDropzone.classList.add('dragover');
+    });
+    docDropzone.addEventListener('dragleave', () => {
+      docDropzone.classList.remove('dragover');
+    });
+    docDropzone.addEventListener('drop', (event) => {
+      event.preventDefault();
+      docDropzone.classList.remove('dragover');
+      addRegistrationDocuments(event.dataTransfer?.files);
+    });
+  }
+
+  const manageCoursesBtn = document.getElementById('manageCoursesBtn');
+  if (manageCoursesBtn) {
+    if (isRepresentativeSession(session)) {
+      manageCoursesBtn.style.display = 'none';
+    } else {
+      manageCoursesBtn.addEventListener('click', async () => {
+        clearCourseForm();
+        await renderCoursesTable();
+        openModal('coursesModal');
+      });
+    }
+  }
+
+  const saveCourseBtn = document.getElementById('saveCourseBtn');
+  if (saveCourseBtn) {
+    saveCourseBtn.addEventListener('click', saveCourse);
+  }
+
+  const resetCourseBtn = document.getElementById('resetCourseBtn');
+  if (resetCourseBtn) {
+    resetCourseBtn.addEventListener('click', clearCourseForm);
+  }
+
+  const search = document.getElementById('registrationSearch');
+  if (search) {
+    search.addEventListener('input', () => renderRegistrationsTable(session, search.value));
+  }
+
+  loadRegistrationLookups();
+  seedRepresentativeInfoFromSession(session);
+
+  clearRegistrationForm(session);
+  renderRegistrationsTable(session);
+}
+
+async function loadRegistrationLookups() {
+  await Promise.all([
+    loadCoursesForRegistration(),
+    loadSportsForRegistration(),
+    loadEventsForRegistration()
+  ]);
+
+  refreshRegistrationEvents();
+}
+
+async function loadCoursesForRegistration() {
+  const selectIds = ['repCourse'];
+
+  try {
+    const courses = await fetchCoursesFromApi();
+    const options = ['<option value="">Select course</option>']
+      .concat(courses.map((course) => `<option value="${Number(course.id)}">${escapeAdminHTML(course.course_name || '')}</option>`));
+
+    selectIds.forEach((id) => {
+      const select = document.getElementById(id);
+      if (!select) return;
+      select.innerHTML = options.join('');
+    });
+  } catch (err) {
+    selectIds.forEach((id) => {
+      const select = document.getElementById(id);
+      if (!select) return;
+      select.innerHTML = '<option value="">Unable to load courses</option>';
+    });
+  }
+}
+
+async function loadSportsForRegistration() {
+  const sportSelect = document.getElementById('regSportId');
+  if (!sportSelect) return;
+
+  try {
+    const res = await fetch('../api/sports/read.php');
+    const data = await parseApiJson(res);
+    if (!data.success || !Array.isArray(data.data)) {
+      throw new Error(data.message || 'Failed to fetch sports.');
+    }
+
+    registrationSportsCache = data.data;
+    const options = ['<option value="">Select sport</option>'];
+
+    data.data.forEach((sport) => {
+      const active = Number(sport.is_active ?? 1) === 1;
+      if (!active) return;
+      options.push(`<option value="${Number(sport.id)}">${escapeAdminHTML(sport.sport_name || '')}</option>`);
+    });
+
+    sportSelect.innerHTML = options.join('');
+  } catch (err) {
+    sportSelect.innerHTML = '<option value="">Unable to load sports</option>';
+    adminToast(err.message || 'Failed to load sports.', 'error');
+  }
+}
+
+async function loadEventsForRegistration() {
+  try {
+    const res = await fetch('../api/events/read.php');
+    const data = await parseApiJson(res);
+    if (!data.success || !Array.isArray(data.data)) {
+      throw new Error(data.message || 'Failed to fetch events.');
+    }
+    registrationEventsCache = data.data;
+  } catch (err) {
+    registrationEventsCache = [];
+    adminToast(err.message || 'Failed to load events.', 'error');
+  }
+}
+
+function handleRegistrationSelectionChange() {
+  refreshRegistrationEvents();
+  toggleRegistrationParticipantsSection();
+}
+
+function refreshRegistrationEvents() {
+  const eventSelect = document.getElementById('regEventId');
+  const sportId = Number(document.getElementById('regSportId')?.value || 0);
+  const category = String(document.getElementById('regCategory')?.value || '').trim().toLowerCase();
+  if (!eventSelect) return;
+
+  if (!sportId || !category) {
+    eventSelect.innerHTML = '<option value="">Select sport and category first</option>';
+    return;
+  }
+
+  const filtered = registrationEventsCache.filter((event) => {
+    return Number(event.sports_id) === sportId && String(event.category || '').trim().toLowerCase() === category;
+  });
+
+  if (!filtered.length) {
+    eventSelect.innerHTML = '<option value="">No matching events found</option>';
+    return;
+  }
+
+  eventSelect.innerHTML = ['<option value="">Select event</option>']
+    .concat(filtered.map((event) => `<option value="${Number(event.id)}">${escapeAdminHTML(event.title || '')}</option>`))
+    .join('');
+}
+
+function toggleRegistrationParticipantsSection() {
+  const section = document.getElementById('regParticipantsSection');
+  if (!section) return;
+
+  const sportId = document.getElementById('regSportId')?.value;
+  const category = document.getElementById('regCategory')?.value;
+  const eventId = document.getElementById('regEventId')?.value;
+  const visible = Boolean(sportId && category && eventId);
+
+  section.style.display = visible ? '' : 'none';
+}
+
+function seedRepresentativeInfoFromSession(session) {
+  if (!session) return;
+
+  const repFirstName = document.getElementById('repFirstName');
+  const repLastName = document.getElementById('repLastName');
+  const regEmail = document.getElementById('regEmail');
+
+  const name = String(session.name || '').trim();
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (repFirstName && !repFirstName.value) repFirstName.value = parts[0] || '';
+  if (repLastName && !repLastName.value) repLastName.value = parts.length > 1 ? parts.slice(1).join(' ') : '';
+  if (regEmail && !regEmail.value) regEmail.value = session.email || '';
+}
+
+function addRegistrationPlayer() {
+  const lastName = document.getElementById('playerLastName')?.value.trim();
+  const firstName = document.getElementById('playerFirstName')?.value.trim();
+  const studentId = document.getElementById('playerStudentId')?.value.trim();
+  const repCourseSelect = document.getElementById('repCourse');
+  const courseId = Number(repCourseSelect?.value || 0);
+  const courseName = repCourseSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+
+  if (!lastName || !firstName || !studentId || !courseId) {
+    adminToast('Player last name, first name, student ID, and representative course are required.', 'error');
+    return;
+  }
+
+  registrationPlayersDraft.push({
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    last_name: lastName,
+    first_name: firstName,
+    student_id: studentId,
+    course_id: courseId,
+    course_name: courseName
+  });
+
+  ['playerLastName', 'playerFirstName', 'playerStudentId'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  renderRegistrationPlayersTable();
+}
+
+function syncPlayersCourseFromRepresentative() {
+  const repCourseSelect = document.getElementById('repCourse');
+  const courseId = Number(repCourseSelect?.value || 0);
+  const courseName = repCourseSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+
+  if (!courseId || !courseName || !registrationPlayersDraft.length) return;
+
+  registrationPlayersDraft = registrationPlayersDraft.map((player) => ({
+    ...player,
+    course_id: courseId,
+    course_name: courseName
+  }));
+
+  renderRegistrationPlayersTable();
+}
+
+function renderRegistrationPlayersTable() {
+  const tbody = document.getElementById('regPlayersTableBody');
+  if (!tbody) return;
+
+  if (!registrationPlayersDraft.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No players added yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = registrationPlayersDraft.map((player, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeAdminHTML(player.last_name)}</td>
+      <td>${escapeAdminHTML(player.first_name)}</td>
+      <td>${escapeAdminHTML(player.student_id)}</td>
+      <td>${escapeAdminHTML(player.course_name)}</td>
+      <td><button class="action-btn del" onclick="removeRegistrationPlayer(${Number(player.id)})" title="Remove">🗑️</button></td>
+    </tr>
+  `).join('');
+}
+
+window.removeRegistrationPlayer = function(playerId) {
+  registrationPlayersDraft = registrationPlayersDraft.filter((player) => Number(player.id) !== Number(playerId));
+  renderRegistrationPlayersTable();
+};
+
+function addRegistrationDocuments(fileList) {
+  if (!fileList || !fileList.length) return;
+
+  const allowed = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+  Array.from(fileList).forEach((file) => {
+    if (!allowed.includes(file.type)) {
+      return;
+    }
+
+    const exists = registrationDocumentsDraft.some((item) => item.name === file.name && item.size === file.size);
+    if (exists) return;
+
+    registrationDocumentsDraft.push({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
+  });
+
+  renderRegistrationDocumentList();
+}
+
+function formatFileSize(bytes) {
+  const b = Number(bytes || 0);
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderRegistrationDocumentList() {
+  const list = document.getElementById('regDocList');
+  if (!list) return;
+
+  if (!registrationDocumentsDraft.length) {
+    list.innerHTML = '<li class="empty">No files selected.</li>';
+    return;
+  }
+
+  list.innerHTML = registrationDocumentsDraft.map((doc) => `
+    <li>
+      <span class="doc-name">${escapeAdminHTML(doc.name)}</span>
+      <span class="doc-size">${escapeAdminHTML(formatFileSize(doc.size))}</span>
+      <button type="button" class="doc-remove" onclick="removeRegistrationDocument(${Number(doc.id)})" aria-label="Remove file">&times;</button>
+    </li>
+  `).join('');
+}
+
+window.removeRegistrationDocument = function(docId) {
+  registrationDocumentsDraft = registrationDocumentsDraft.filter((doc) => Number(doc.id) !== Number(docId));
+  renderRegistrationDocumentList();
+};
+
+async function fetchRegistrationRecordsFromApi() {
+  const res = await fetch('../api/registrations/read.php');
+  const data = await parseApiJson(res);
+  if (!data.success || !Array.isArray(data.data)) {
+    throw new Error(data.message || 'Failed to fetch registrations.');
+  }
+  return data.data;
+}
+
+async function fetchRegistrationById(id) {
+  const res = await fetch(`../api/registrations/read.php?id=${encodeURIComponent(id)}`);
+  const data = await parseApiJson(res);
+  if (!data.success || !data.data) {
+    throw new Error(data.message || 'Registration not found.');
+  }
+  return data.data;
+}
+
+async function registrationApiRequest(url, method, payload) {
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await parseApiJson(res);
+  if (!data.success) {
+    throw new Error(data.message || 'Registration request failed.');
+  }
+  return data;
+}
+
+function registrationRole(role) {
+  return String(role || '').trim().toLowerCase();
+}
+
+function isRepresentativeSession(session) {
+  return registrationRole(session?.role) === 'representative';
+}
+
+function isAdministratorSession(session) {
+  return registrationRole(session?.role) === 'administrator';
+}
+
+function registrationBadgeClass(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'approved') return 'success';
+  if (normalized === 'rejected') return 'danger';
+  if (normalized === 'pending') return 'accent';
+  return 'primary';
+}
+
+function formatRegistrationDateTime(dateValue) {
+  if (!dateValue) return '—';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+}
+
+async function renderRegistrationsTable(session, filter = '') {
+  const tbody = document.getElementById('registrationsTableBody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px;">Loading registrations...</td></tr>';
+
+  let rows = [];
+  try {
+    rows = await fetchRegistrationRecordsFromApi();
+    if (isRepresentativeSession(session)) {
+      rows = rows.filter((row) => Number(row.created_by_id) === Number(session.id));
+    }
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:30px;">Failed to load registrations.</td></tr>';
+    adminToast(err.message || 'Failed to load registrations.', 'error');
+    return;
+  }
+
+  const q = String(filter || '').trim().toLowerCase();
+  if (q) {
+    rows = rows.filter((row) => {
+      return [
+        row.team_name,
+        row.event_name,
+        row.category,
+        row.representative_name,
+        row.submitted_by_name,
+        row.status
+      ]
+        .some((value) => String(value || '').toLowerCase().includes(q));
+    });
+  }
+
+  rows.sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px;">${isRepresentativeSession(session) ? 'No submitted registration yet.' : 'No registration records found.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map((row, index) => {
+    const canReview =
+      isAdministratorSession(session) &&
+      registrationRole(row.submitted_by_role) === 'representative' &&
+      String(row.status || '').toLowerCase() === 'pending';
+
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td><strong>${escapeAdminHTML(row.team_name || '')}</strong></td>
+        <td>${escapeAdminHTML(row.event_name || '')}</td>
+        <td>${escapeAdminHTML(row.category || '')}</td>
+        <td>${escapeAdminHTML(row.representative_name || row.submitted_by_name || '')}</td>
+        <td>${escapeAdminHTML(formatRegistrationDateTime(row.submitted_at))}</td>
+        <td><span class="badge badge-${registrationBadgeClass(row.status)}">${escapeAdminHTML(row.status || 'Pending')}</span></td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn view" onclick="viewRegistrationRequest(${Number(row.id)})" title="View Request">&#128065;</button>
+            ${canReview ? `<button class="action-btn edit" onclick="updateRegistrationStatus(${Number(row.id)}, 'Approved')" title="Approve">&#10003;</button>` : ''}
+            ${canReview ? `<button class="action-btn del" onclick="updateRegistrationStatus(${Number(row.id)}, 'Rejected')" title="Reject">&#10005;</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function saveRegistration(session) {
+  const repFirstName = document.getElementById('repFirstName')?.value.trim();
+  const repLastName = document.getElementById('repLastName')?.value.trim();
+  const repStudentId = document.getElementById('repStudentId')?.value.trim();
+  const repCourseSelect = document.getElementById('repCourse');
+  const repCourseId = Number(repCourseSelect?.value || 0);
+  const repCourseName = repCourseSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+
+  const teamName = document.getElementById('regTeamName')?.value.trim();
+  const sportSelect = document.getElementById('regSportId');
+  const sportId = Number(sportSelect?.value || 0);
+  const sportName = sportSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+
+  const category = document.getElementById('regCategory')?.value;
+  const eventSelect = document.getElementById('regEventId');
+  const eventId = Number(eventSelect?.value || 0);
+  const eventName = eventSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+
+  const coachFirstName = document.getElementById('coachFirstName')?.value.trim();
+  const coachLastName = document.getElementById('coachLastName')?.value.trim();
+  const contact = document.getElementById('regContact')?.value.trim();
+  const email = document.getElementById('regEmail')?.value.trim();
+
+  const notes = document.getElementById('regNotes')?.value.trim() || '';
+  const selectedStatus = document.getElementById('registrationStatus')?.value || 'Pending';
+
+  if (!repFirstName || !repLastName || !repStudentId || !repCourseId || !contact || !email) {
+    adminToast('Representative fields are required.', 'error');
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    adminToast('Please enter a valid email address.', 'error');
+    return;
+  }
+
+  if (!teamName || !sportId || !category || !eventId) {
+    adminToast('Team name, sport, category, and event are required.', 'error');
+    return;
+  }
+
+  if (!coachFirstName || !coachLastName) {
+    adminToast('Coach/Manager first name and last name are required.', 'error');
+    return;
+  }
+
+  if (!registrationPlayersDraft.length) {
+    adminToast('Please add at least one player.', 'error');
+    return;
+  }
+
+  const selectedEvent = registrationEventsCache.find((event) => Number(event.id) === eventId);
+  const normalizedCategory = String(category || '').trim().toLowerCase();
+  if (!selectedEvent || String(selectedEvent.category || '').trim().toLowerCase() !== normalizedCategory) {
+    adminToast('Please select a valid event for the selected sport and category.', 'error');
+    return;
+  }
+
+  if (Number(selectedEvent.sports_id) !== sportId) {
+    adminToast('Selected event does not match the selected sport.', 'error');
+    return;
+  }
+
+  const representativeName = `${repFirstName} ${repLastName}`.trim();
+
+  if (!teamName || !eventName || !category || !contact) {
+    adminToast('Please complete all required registration fields.', 'error');
+    return;
+  }
+
+  const status = isRepresentativeSession(session) ? 'Pending' : selectedStatus;
+
+  const payload = {
+    team_name: teamName,
+    sports_id: sportId,
+    event_id: eventId,
+    category,
+    representative_name: representativeName,
+    representative_first_name: repFirstName,
+    representative_last_name: repLastName,
+    representative_student_id: repStudentId,
+    representative_course_id: repCourseId,
+    representative_course_name: repCourseName,
+    contact_number: contact,
+    email_address: email,
+    coach: {
+      first_name: coachFirstName,
+      last_name: coachLastName
+    },
+    players: registrationPlayersDraft.map((player) => ({ ...player })),
+    players_count: registrationPlayersDraft.length,
+    documents: registrationDocumentsDraft.map((doc) => ({
+      name: doc.name,
+      size: doc.size,
+      type: doc.type
+    })),
+    notes,
+    status,
+    submitted_by_name: representativeName || session.name || session.username || 'User',
+    submitted_by_role: session.role || '',
+    created_by_id: Number(session.id) || 0,
+    reviewed_by_name: '',
+    reviewed_at: ''
+  };
+
+  try {
+    await registrationApiRequest('../api/registrations/create.php', 'POST', payload);
+    closeModal('registrationModal');
+    clearRegistrationForm(session);
+    await renderRegistrationsTable(session, document.getElementById('registrationSearch')?.value || '');
+    adminToast(isRepresentativeSession(session) ? 'Registration submitted for approval.' : 'Registration saved.');
+  } catch (err) {
+    adminToast(err.message || 'Failed to save registration.', 'error');
+  }
+}
+
+function clearRegistrationForm(session) {
+  const fieldIds = [
+    'registrationId',
+    'repFirstName',
+    'repLastName',
+    'repStudentId',
+    'regContact',
+    'regEmail',
+    'regTeamName',
+    'coachFirstName',
+    'coachLastName',
+    'playerLastName',
+    'playerFirstName',
+    'playerStudentId',
+    'regNotes'
+  ];
+  fieldIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  const repCourse = document.getElementById('repCourse');
+  if (repCourse) repCourse.value = '';
+
+  const sportSelect = document.getElementById('regSportId');
+  if (sportSelect) sportSelect.value = '';
+
+  const category = document.getElementById('regCategory');
+  if (category) category.value = '';
+
+  refreshRegistrationEvents();
+
+  const eventSelect = document.getElementById('regEventId');
+  if (eventSelect) eventSelect.value = '';
+
+  registrationPlayersDraft = [];
+  renderRegistrationPlayersTable();
+
+  registrationDocumentsDraft = [];
+  renderRegistrationDocumentList();
+
+  toggleRegistrationParticipantsSection();
+
+  seedRepresentativeInfoFromSession(session);
+
+  const status = document.getElementById('registrationStatus');
+  if (status) status.value = 'Pending';
+
+  const statusGroup = document.getElementById('registrationStatusGroup');
+  if (statusGroup) {
+    statusGroup.style.display = isRepresentativeSession(session) ? 'none' : '';
+  }
+}
+
+window.viewRegistrationRequest = async function(id) {
+  const session = AuthModule.getSession();
+  if (!session) return;
+
+  let row;
+  try {
+    row = await fetchRegistrationById(id);
+  } catch (err) {
+    adminToast(err.message || 'Registration request not found.', 'error');
+    return;
+  }
+
+  if (isRepresentativeSession(session) && Number(row.created_by_id) !== Number(session.id)) {
+    adminToast('You can only view your own submitted registrations.', 'error');
+    return;
+  }
+
+  const viewBody = document.getElementById('registrationViewBody');
+  if (!viewBody) return;
+
+  currentViewedRegistration = row;
+
+  const coach = row.coach || {};
+  const players = Array.isArray(row.players) ? row.players : [];
+  const documents = Array.isArray(row.documents) ? row.documents : [];
+
+  const playersMarkup = players.length
+    ? `<table class="admin-table"><thead><tr><th>#</th><th>Last Name</th><th>First Name</th><th>Student ID</th><th>Course</th></tr></thead><tbody>${players.map((player, index) => `<tr><td>${index + 1}</td><td>${escapeAdminHTML(player.last_name || '')}</td><td>${escapeAdminHTML(player.first_name || '')}</td><td>${escapeAdminHTML(player.student_id || '')}</td><td>${escapeAdminHTML(player.course_name || '')}</td></tr>`).join('')}</tbody></table>`
+    : '<p style="margin:0;color:#777;">No players listed.</p>';
+
+  const docsMarkup = documents.length
+    ? `<ul style="margin:0;padding-left:18px;color:#444;">${documents.map((doc) => `<li>${escapeAdminHTML(doc.name || '')} (${escapeAdminHTML(formatFileSize(doc.size))})</li>`).join('')}</ul>`
+    : '<p style="margin:0;color:#777;">No document uploaded.</p>';
+
+  const downloadBtn = document.getElementById('downloadRegistrationPdfBtn');
+  if (downloadBtn) {
+    downloadBtn.onclick = () => window.downloadRegistrationRequestPdf();
+  }
+
+  viewBody.innerHTML = `
+    <div class="registration-view-sections">
+      <section class="registration-view-section">
+        <h4>Representative Information</h4>
+        <div class="admin-form-grid" style="gap:12px;">
+          <div class="admin-form-group"><label>Representative</label><input type="text" value="${escapeAdminHTML(row.representative_name || row.submitted_by_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Student ID</label><input type="text" value="${escapeAdminHTML(row.representative_student_id || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Course</label><input type="text" value="${escapeAdminHTML(row.representative_course_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Contact Number</label><input type="text" value="${escapeAdminHTML(row.contact_number || '')}" disabled /></div>
+          <div class="admin-form-group full"><label>Email Address</label><input type="text" value="${escapeAdminHTML(row.email_address || '')}" disabled /></div>
+        </div>
+      </section>
+
+      <section class="registration-view-section">
+        <h4>Team and Event Selection</h4>
+        <div class="admin-form-grid" style="gap:12px;">
+          <div class="admin-form-group"><label>Team Name</label><input type="text" value="${escapeAdminHTML(row.team_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Sport</label><input type="text" value="${escapeAdminHTML(row.sport_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Event</label><input type="text" value="${escapeAdminHTML(row.event_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Category</label><input type="text" value="${escapeAdminHTML(row.category || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Status</label><input type="text" value="${escapeAdminHTML(row.status || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Number of Players</label><input type="text" value="${escapeAdminHTML(String(row.players_count || players.length || '0'))}" disabled /></div>
+        </div>
+      </section>
+
+      <section class="registration-view-section">
+        <h4>Coach and Players</h4>
+        <div class="admin-form-grid" style="gap:12px;">
+          <div class="admin-form-group"><label>Coach Last Name</label><input type="text" value="${escapeAdminHTML(coach.last_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Coach First Name</label><input type="text" value="${escapeAdminHTML(coach.first_name || '')}" disabled /></div>
+          <div class="admin-form-group full"><label>Players</label>${playersMarkup}</div>
+        </div>
+      </section>
+
+      <section class="registration-view-section">
+        <h4>Documents and Submission Details</h4>
+        <div class="admin-form-grid" style="gap:12px;">
+          <div class="admin-form-group full"><label>Uploaded Documents</label>${docsMarkup}</div>
+          <div class="admin-form-group"><label>Submitted By</label><input type="text" value="${escapeAdminHTML(row.submitted_by_name || '')}" disabled /></div>
+          <div class="admin-form-group"><label>Submitted At</label><input type="text" value="${escapeAdminHTML(formatRegistrationDateTime(row.submitted_at))}" disabled /></div>
+          <div class="admin-form-group"><label>Reviewed By</label><input type="text" value="${escapeAdminHTML(row.reviewed_by_name || 'Not reviewed yet')}" disabled /></div>
+          <div class="admin-form-group full"><label>Notes</label><textarea rows="3" disabled>${escapeAdminHTML(row.notes || '')}</textarea></div>
+        </div>
+      </section>
+    </div>
+  `;
+
+  openModal('registrationViewModal');
+};
+
+window.downloadRegistrationRequestPdf = function() {
+  const row = currentViewedRegistration;
+  if (!row) {
+    adminToast('No registration request selected.', 'error');
+    return;
+  }
+
+  const coach = row.coach || {};
+  const players = Array.isArray(row.players) ? row.players : [];
+  const documents = Array.isArray(row.documents) ? row.documents : [];
+  const submittedAt = formatRegistrationDateTime(row.submitted_at);
+
+  const playersRows = players.length
+    ? players.map((player, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeAdminHTML(player.last_name || '')}</td>
+          <td>${escapeAdminHTML(player.first_name || '')}</td>
+          <td>${escapeAdminHTML(player.student_id || '')}</td>
+          <td>${escapeAdminHTML(player.course_name || '')}</td>
+        </tr>
+      `).join('')
+    : '<tr><td colspan="5">No players listed.</td></tr>';
+
+  const documentsRows = documents.length
+    ? `<ul>${documents.map((doc) => `<li>${escapeAdminHTML(doc.name || '')} (${escapeAdminHTML(formatFileSize(doc.size))})</li>`).join('')}</ul>`
+    : '<p>No document uploaded.</p>';
+
+  const html = `<!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Registration Request ${escapeAdminHTML(String(row.id || ''))}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:24px;color:#222;}
+      h1{font-size:20px;margin:0 0 4px;color:#1a237e;}
+      h2{font-size:14px;margin:18px 0 8px;color:#1a237e;border-bottom:1px solid #e6e9f0;padding-bottom:4px;}
+      .meta{font-size:12px;color:#666;margin-bottom:14px;}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;}
+      .field{font-size:12px;}
+      .label{font-weight:700;color:#445;display:block;margin-bottom:2px;}
+      table{width:100%;border-collapse:collapse;margin-top:8px;}
+      th,td{border:1px solid #d9deea;padding:6px 8px;font-size:12px;text-align:left;}
+      th{background:#f3f6fc;}
+      .notes{border:1px solid #d9deea;padding:10px;border-radius:6px;min-height:48px;font-size:12px;white-space:pre-wrap;}
+      @media print { button{display:none;} }
+    </style>
+  </head>
+  <body>
+    <h1>Registration Request</h1>
+    <div class="meta">Request #${escapeAdminHTML(String(row.id || ''))} • Submitted ${escapeAdminHTML(submittedAt)}</div>
+
+    <h2>Representative Information</h2>
+    <div class="grid">
+      <div class="field"><span class="label">Representative</span>${escapeAdminHTML(row.representative_name || row.submitted_by_name || '')}</div>
+      <div class="field"><span class="label">Student ID</span>${escapeAdminHTML(row.representative_student_id || '')}</div>
+      <div class="field"><span class="label">Course</span>${escapeAdminHTML(row.representative_course_name || '')}</div>
+      <div class="field"><span class="label">Contact Number</span>${escapeAdminHTML(row.contact_number || '')}</div>
+      <div class="field"><span class="label">Email Address</span>${escapeAdminHTML(row.email_address || '')}</div>
+    </div>
+
+    <h2>Team and Event Selection</h2>
+    <div class="grid">
+      <div class="field"><span class="label">Team Name</span>${escapeAdminHTML(row.team_name || '')}</div>
+      <div class="field"><span class="label">Sport</span>${escapeAdminHTML(row.sport_name || '')}</div>
+      <div class="field"><span class="label">Event</span>${escapeAdminHTML(row.event_name || '')}</div>
+      <div class="field"><span class="label">Category</span>${escapeAdminHTML(row.category || '')}</div>
+      <div class="field"><span class="label">Status</span>${escapeAdminHTML(row.status || '')}</div>
+      <div class="field"><span class="label">Players Count</span>${escapeAdminHTML(String(row.players_count || players.length || 0))}</div>
+    </div>
+
+    <h2>Coach Information</h2>
+    <div class="grid">
+      <div class="field"><span class="label">Coach Last Name</span>${escapeAdminHTML(coach.last_name || '')}</div>
+      <div class="field"><span class="label">Coach First Name</span>${escapeAdminHTML(coach.first_name || '')}</div>
+    </div>
+
+    <h2>Players</h2>
+    <table>
+      <thead><tr><th>#</th><th>Last Name</th><th>First Name</th><th>Student ID</th><th>Course</th></tr></thead>
+      <tbody>${playersRows}</tbody>
+    </table>
+
+    <h2>Uploaded Documents</h2>
+    ${documentsRows}
+
+    <h2>Additional Details</h2>
+    <div class="grid">
+      <div class="field"><span class="label">Submitted By</span>${escapeAdminHTML(row.submitted_by_name || '')}</div>
+      <div class="field"><span class="label">Reviewed By</span>${escapeAdminHTML(row.reviewed_by_name || 'Not reviewed yet')}</div>
+    </div>
+    <div class="field" style="margin-top:10px;"><span class="label">Notes</span><div class="notes">${escapeAdminHTML(row.notes || '')}</div></div>
+
+    <div style="margin-top:18px;"><button onclick="window.print()">Print / Save as PDF</button></div>
+  </body>
+  </html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) {
+    adminToast('Allow pop-ups to download PDF.', 'error');
+    return;
+  }
+
+  win.document.write(html);
+  win.document.close();
+};
+
+window.updateRegistrationStatus = async function(id, status) {
+  const session = AuthModule.getSession();
+  if (!session || !isAdministratorSession(session)) {
+    adminToast('Only administrators can review requests.', 'error');
+    return;
+  }
+
+  let row;
+  try {
+    row = await fetchRegistrationById(id);
+  } catch (err) {
+    adminToast(err.message || 'Registration request not found.', 'error');
+    return;
+  }
+
+  if (registrationRole(row.submitted_by_role) !== 'representative') {
+    adminToast('Only representative submissions can be approved or rejected.', 'error');
+    return;
+  }
+
+  if (String(row.status || '').toLowerCase() !== 'pending') {
+    adminToast('Only pending requests can be reviewed.', 'warning');
+    return;
+  }
+
+  try {
+    await registrationApiRequest('../api/registrations/update-status.php', 'PUT', {
+      id: Number(id),
+      status,
+      reviewed_by_name: session.name || session.username || 'Administrator'
+    });
+    await renderRegistrationsTable(session, document.getElementById('registrationSearch')?.value || '');
+    adminToast(`Registration ${String(status).toLowerCase()}.`, status === 'Approved' ? 'success' : 'warning');
+  } catch (err) {
+    adminToast(err.message || 'Failed to update registration status.', 'error');
+  }
+};
+
+/* =============================================
+   COURSE MANAGER (DB-Backed)
+   ============================================= */
+async function renderCoursesTable() {
+  const tbody = document.getElementById('coursesTableBody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#aaa;padding:20px;">Loading courses...</td></tr>';
+
+  try {
+    const courses = await fetchCoursesFromApi();
+
+    if (!courses.length) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#aaa;padding:20px;">No courses found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = courses.map((course, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td><strong>${escapeAdminHTML(course.course_name || '')}</strong></td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn edit" onclick="editCourse(${Number(course.id)})" title="Edit">✏️</button>
+            <button class="action-btn del" onclick="deleteCourse(${Number(course.id)})" title="Delete">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#c62828;padding:20px;">Failed to load courses.</td></tr>';
+    adminToast(err.message || 'Failed to load courses.', 'error');
+  }
+}
+
+async function fetchCoursesFromApi() {
+  const res = await fetch('../api/courses/read.php');
+  const data = await parseApiJson(res);
+  if (!data.success || !Array.isArray(data.data)) {
+    throw new Error(data.message || 'Failed to fetch courses.');
+  }
+  return data.data;
+}
+
+async function saveCourse() {
+  const courseName = document.getElementById('courseName')?.value.trim();
+
+  if (!courseName) {
+    adminToast('Course name is required.', 'error');
+    return;
+  }
+
+  try {
+    if (editingCourseId) {
+      await courseApiRequest('../api/courses/update.php', 'PUT', {
+        id: editingCourseId,
+        course_name: courseName
+      });
+      adminToast('Course updated.');
+    } else {
+      await courseApiRequest('../api/courses/create.php', 'POST', {
+        course_name: courseName
+      });
+      adminToast('Course created.');
+    }
+
+    clearCourseForm();
+    await renderCoursesTable();
+  } catch (err) {
+    adminToast(err.message || 'Failed to save course.', 'error');
+  }
+}
+
+window.editCourse = async function(id) {
+  try {
+    const res = await fetch(`../api/courses/read.php?id=${encodeURIComponent(id)}`);
+    const data = await parseApiJson(res);
+    if (!data.success || !data.data) {
+      throw new Error(data.message || 'Course not found.');
+    }
+
+    editingCourseId = Number(data.data.id);
+    const courseIdInput = document.getElementById('courseId');
+    if (courseIdInput) courseIdInput.value = String(editingCourseId);
+    const courseNameInput = document.getElementById('courseName');
+    if (courseNameInput) courseNameInput.value = data.data.course_name || '';
+  } catch (err) {
+    adminToast(err.message || 'Failed to load course.', 'error');
+  }
+};
+
+window.deleteCourse = async function(id) {
+  if (!confirm('Delete this course?')) return;
+
+  try {
+    await courseApiRequest('../api/courses/delete.php', 'DELETE', { id: Number(id) });
+    if (editingCourseId === Number(id)) {
+      clearCourseForm();
+    }
+    await renderCoursesTable();
+    adminToast('Course deleted.', 'warning');
+  } catch (err) {
+    adminToast(err.message || 'Failed to delete course.', 'error');
+  }
+};
+
+function clearCourseForm() {
+  editingCourseId = null;
+  const courseIdInput = document.getElementById('courseId');
+  if (courseIdInput) courseIdInput.value = '';
+  const courseNameInput = document.getElementById('courseName');
+  if (courseNameInput) courseNameInput.value = '';
+}
+
+async function courseApiRequest(url, method, payload) {
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await parseApiJson(res);
+  if (!data.success) {
+    throw new Error(data.message || 'Course request failed.');
+  }
+  return data;
+}
+
+/* =============================================
    USER MANAGER
    ============================================= */
 function initUserManager() {
@@ -846,7 +2276,7 @@ window.editUser = async function(id) {
     document.getElementById('userUsername').value = u.username || '';
     document.getElementById('userEmail').value    = u.email || '';
     document.getElementById('userPhone').value    = u.phone || '';
-    document.getElementById('userRole').value     = u.role || 'Organizer';
+    document.getElementById('userRole').value     = u.role || 'Representative';
     document.getElementById('userStatus').value   = u.status || 'Active';
     document.getElementById('userPassword').value = '';
     document.getElementById('userUsername').disabled = true;
@@ -882,7 +2312,7 @@ function clearUserForm() {
   const usernameEl = document.getElementById('userUsername');
   if (usernameEl) usernameEl.disabled = false;
   const roleEl = document.getElementById('userRole');
-  if (roleEl) roleEl.value = 'Organizer';
+  if (roleEl) roleEl.value = 'Representative';
   const statusEl = document.getElementById('userStatus');
   if (statusEl) statusEl.value = 'Active';
   const t = document.getElementById('userModalTitle');
@@ -1593,29 +3023,106 @@ function initAboutManager() {
 }
 
 /* =============================================
-   REPORTS
+   REPORTS / EXPORT
    ============================================= */
 function initReports() {
   const exportBtn = document.getElementById('exportReportBtn');
   if (!exportBtn) return;
 
-  exportBtn.addEventListener('click', () => {
-    const events = DataStore.getEvents();
-    const csvRows = [
-      ['ID','Title','Date','Location','Teams','Status'],
-      ...events.map(e => [e.id, e.title, e.date, e.location, e.teams, e.status])
-    ];
+  exportBtn.addEventListener('click', () => openModal('exportModal'));
 
-    const csv  = csvRows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `events_report_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    adminToast('Report exported as CSV.');
+  document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
+    exportEvents('csv');
+    closeModal('exportModal');
   });
+
+  document.getElementById('exportExcelBtn')?.addEventListener('click', () => {
+    exportEvents('excel');
+    closeModal('exportModal');
+  });
+
+  document.getElementById('exportPdfBtn')?.addEventListener('click', () => {
+    exportEvents('pdf');
+    closeModal('exportModal');
+  });
+}
+
+function exportEventsRows() {
+  return eventsCache.map(e => ({
+    ID:          e.id,
+    'Public ID': e.public_id  || '',
+    Title:       e.title      || '',
+    Sport:       e.sport_name || '',
+    Category:    e.category   || '',
+    'Start Date': e.event_start_date || '',
+    'End Date':   e.event_end_date   || '',
+    Location:    e.location   || '',
+    Teams:       e.teams_count != null ? e.teams_count : '',
+    Status:      e.status     || ''
+  }));
+}
+
+function exportEvents(format) {
+  const rows   = exportEventsRows();
+  const keys   = rows.length ? Object.keys(rows[0]) : [];
+  const date   = new Date().toISOString().slice(0, 10);
+
+  if (format === 'csv') {
+    const lines = [
+      keys.map(k => `"${k}"`).join(','),
+      ...rows.map(r => keys.map(k => `"${String(r[k]).replace(/"/g, '""')}"`).join(','))
+    ];
+    downloadBlob(lines.join('\n'), `events_${date}.csv`, 'text/csv');
+    adminToast('Exported as CSV.');
+    return;
+  }
+
+  if (format === 'excel') {
+    // Build a tab-separated UTF-8 file with .xls MIME so Excel opens it directly
+    const lines = [
+      keys.join('\t'),
+      ...rows.map(r => keys.map(k => String(r[k])).join('\t'))
+    ];
+    downloadBlob(lines.join('\n'), `events_${date}.xls`, 'application/vnd.ms-excel');
+    adminToast('Exported as Excel.');
+    return;
+  }
+
+  if (format === 'pdf') {
+    const win = window.open('', '_blank');
+    if (!win) { adminToast('Allow pop-ups to export PDF.', 'error'); return; }
+
+    const colWidths = keys.map(() => `${Math.floor(100 / keys.length)}%`).join(' ');
+    const headerCells = keys.map(k =>
+      `<th style="background:#1a237e;color:#fff;padding:7px 10px;text-align:left;font-size:11px;">${k}</th>`
+    ).join('');
+    const bodyRows = rows.map((r, i) =>
+      `<tr style="background:${i % 2 === 0 ? '#f9f9f9' : '#fff'};">
+        ${keys.map(k => `<td style="padding:6px 10px;font-size:11px;border-bottom:1px solid #eee;">${r[k]}</td>`).join('')}
+      </tr>`
+    ).join('');
+
+    win.document.write(`<!DOCTYPE html><html><head><title>Events Export</title>
+      <style>body{font-family:Arial,sans-serif;margin:24px;}h2{color:#1a237e;margin-bottom:12px;}
+      table{border-collapse:collapse;width:100%;}@media print{button{display:none;}}</style>
+      </head><body>
+      <h2>Events Report &mdash; ${date}</h2>
+      <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+      <br><button onclick="window.print()" style="padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨️ Print / Save PDF</button>
+      </body></html>`);
+    win.document.close();
+    adminToast('PDF preview opened in new tab.');
+  }
+}
+
+function downloadBlob(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* =============================================

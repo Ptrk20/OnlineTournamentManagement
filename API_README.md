@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
   full_name VARCHAR(120) NOT NULL,
   email VARCHAR(120) NOT NULL,
   phone VARCHAR(20) NULL,
-  role ENUM('Administrator','Organizer') NOT NULL DEFAULT 'Organizer',
+  role ENUM('Administrator','Representative') NOT NULL DEFAULT 'Representative',
   status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -111,7 +111,7 @@ The website will be accessible at: `http://localhost:8000`
     "full_name": "John Doe",
     "email": "john@example.com",
     "phone": "555-1234",
-    "role": "Organizer",
+    "role": "Representative",
     "status": "Active"
   }
   ```
@@ -121,7 +121,7 @@ The website will be accessible at: `http://localhost:8000`
 - **Method:** GET
 - **Query Parameters (optional):**
   - `id`: Get specific user by ID
-  - `role`: Filter by role (Administrator, Organizer)
+  - `role`: Filter by role (Administrator, Representative)
   - `status`: Filter by status (Active, Inactive)
   - `limit`: Number of records (default: 100)
   - `offset`: Offset for pagination (default: 0)
@@ -162,6 +162,83 @@ The website will be accessible at: `http://localhost:8000`
   }
   ```
 
+### Course Management
+
+#### Create Course
+- **URL:** `/api/courses/create.php`
+- **Method:** POST
+- **Content-Type:** application/json
+- **Required Fields:** course_name
+- **Body:**
+  ```json
+  {
+    "course_name": "Bachelor of Science in Information Technology"
+  }
+  ```
+
+#### Read Courses
+- **URL:** `/api/courses/read.php`
+- **Method:** GET
+- **Query Parameters (optional):**
+  - `id`: Get specific course by ID
+- **Examples:**
+  ```
+  GET /api/courses/read.php
+  GET /api/courses/read.php?id=1
+  ```
+
+#### Update Course
+- **URL:** `/api/courses/update.php`
+- **Method:** PUT or POST
+- **Content-Type:** application/json
+- **Required Fields:** id, course_name
+- **Body:**
+  ```json
+  {
+    "id": 1,
+    "course_name": "BS Information Technology"
+  }
+  ```
+
+#### Delete Course
+- **URL:** `/api/courses/delete.php`
+- **Method:** DELETE or POST
+- **Content-Type:** application/json
+- **Required Fields:** id
+- **Body:**
+  ```json
+  {
+    "id": 1
+  }
+  ```
+
+### Registration Management
+
+#### Create Registration
+- **URL:** `/api/registrations/create.php`
+- **Method:** POST
+- **Content-Type:** application/json
+- **Required Fields:**
+  - `team_name`, `sports_id`, `event_id`, `category`
+  - `representative_name`, `representative_first_name`, `representative_last_name`, `representative_student_id`, `representative_course_id`
+  - `contact_number`, `email_address`
+  - `coach` object with `first_name`, `last_name`
+  - `players` array (at least 1)
+  - `submitted_by_name`, `submitted_by_role`, `created_by_id`
+
+#### Read Registrations
+- **URL:** `/api/registrations/read.php`
+- **Method:** GET
+- **Query Parameters (optional):**
+  - `id`: Get specific registration by ID
+
+#### Update Registration Status
+- **URL:** `/api/registrations/update-status.php`
+- **Method:** PUT or POST
+- **Content-Type:** application/json
+- **Required Fields:** `id`, `status`
+- **Optional Fields:** `reviewed_by_name`
+
 ## Testing with cURL (PowerShell)
 
 ### Test Login
@@ -180,12 +257,12 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/auth/login.php" `
 ### Test Create User
 ```powershell
 $body = @{
-    username = "organizer1"
-    password = "Organizer@123"
-    full_name = "Event Organizer"
-    email = "organizer@example.com"
+    username = "representative1"
+    password = "Representative@123"
+    full_name = "Course Representative"
+    email = "representative@example.com"
     phone = "555-1234"
-    role = "Organizer"
+    role = "Representative"
     status = "Active"
 } | ConvertTo-Json
 

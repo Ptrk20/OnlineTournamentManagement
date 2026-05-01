@@ -11,11 +11,10 @@
 
   <aside class="sidebar" id="adminSidebar">
     <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">OTM Admin</span><span class="sub">Tournament Management</span></div></div>
-    <div class="sidebar-user"><div class="avatar" data-user-initials>A</div><div><span class="u-name" data-user-name>Administrator</span><span class="u-role" data-user-role>Admin</span></div></div>
     <nav class="sidebar-nav">
       <div class="nav-label">Main</div>
       <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
-      <a href="register.html"><span class="nav-icon">&#128100;</span> Teams</a>
+      <a href="register.html"><span class="nav-icon">&#128100;</span> Registration</a>
       <a href="events.html" class="active"><span class="nav-icon">&#127942;</span> Events</a>
       <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
       <a href="announcement.html"><span class="nav-icon">&#128276;</span> Announcements</a>
@@ -47,17 +46,18 @@
           <h3><span class="ch-icon">&#127942;</span> All Events</h3>
           <div class="admin-card-actions">
             <input type="text" id="eventSearch" placeholder="Search events..." style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.85rem;width:220px;" />
+            <button class="btn" id="manageSportsBtn" style="background:#e8eaf6;color:#1a237e;font-size:.82rem;padding:8px 14px;">&#9917; Manage Sports</button>
             <button class="btn btn-primary" id="addEventBtn" style="font-size:.82rem;padding:8px 16px;">+ Add Event</button>
-            <button class="btn" id="exportReportBtn" style="background:#f0f2f5;color:#555;font-size:.82rem;padding:8px 14px;">&#128196; Export CSV</button>
+            <button class="btn" id="exportReportBtn" style="background:#f0f2f5;color:#555;font-size:.82rem;padding:8px 14px;">&#128196; Export</button>
           </div>
         </div>
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
-              <tr><th>#</th><th>Event Title</th><th>Date</th><th>Location</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>#</th><th>Event Title</th><th>Sport</th><th>Category</th><th>Start Date</th><th>End Date</th><th>Location</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody id="eventsTableBody">
-              <tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>
+              <tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -80,8 +80,27 @@
             <input type="text" id="eventTitle" placeholder="e.g. National Basketball Championship 2026" />
           </div>
           <div class="admin-form-group">
-            <label>Date <span style="color:red;">*</span></label>
-            <input type="date" id="eventDate" />
+            <label>Sport <span style="color:red;">*</span></label>
+            <select id="eventSportsId">
+              <option value="">— Select Sport —</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Category <span style="color:red;">*</span></label>
+            <select id="eventCategory">
+              <option value="">— Select Category —</option>
+              <option value="Mens">Mens</option>
+              <option value="Womens">Womens</option>
+              <option value="Open">Open</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Start Date &amp; Time <span style="color:red;">*</span></label>
+            <input type="datetime-local" id="eventStartDate" />
+          </div>
+          <div class="admin-form-group">
+            <label>End Date &amp; Time <span style="color:red;">*</span></label>
+            <input type="datetime-local" id="eventEndDate" />
           </div>
           <div class="admin-form-group">
             <label>Location <span style="color:red;">*</span></label>
@@ -102,13 +121,106 @@
           </div>
           <div class="admin-form-group full">
             <label>Description</label>
-            <textarea id="eventDesc" rows="4" placeholder="Brief description of the event..."></textarea>
+            <textarea id="eventDesc" rows="3" placeholder="Brief description of the event..."></textarea>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Cancel</button>
-        <button class="btn btn-primary" id="saveEventBtn">Save Event</button>
+        <button type="button" class="btn btn-cancel" onclick="closeModal('eventModal')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveEventBtn">Save Event</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sports Manager Modal -->
+  <div class="modal-overlay" id="sportsModal">
+    <div class="modal" style="max-width:860px;">
+      <div class="modal-header">
+        <h3>Manage Sports</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="sportId" />
+        <div class="admin-form-grid three sports-form-grid">
+          <div class="admin-form-group">
+            <label>Sport Image</label>
+            <div class="org-image-picker">
+              <img src="../src/images/placeholder.png" alt="Sport preview" id="sportImagePreview" class="org-image-preview" style="width:120px;height:120px;" />
+              <div class="org-image-actions">
+                <button type="button" class="btn" id="sportImageBrowse" style="background:#e8eaf6;color:#1a237e;">Browse Image</button>
+                <button type="button" class="btn" id="sportImageRemove" style="background:#ffebee;color:#c62828;">Remove</button>
+                <small style="color:#777;max-width:180px;line-height:1.35;">JPG, PNG, WEBP, GIF. Max 5MB.</small>
+              </div>
+            </div>
+            <input type="file" id="sportImageUpload" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;" />
+            <input type="hidden" id="sportPhotoPath" />
+          </div>
+          <div class="admin-form-group">
+            <label>Sport Code</label>
+            <input type="text" id="sportCode" placeholder="e.g. bbl" maxlength="20" />
+            <label style="margin-top:10px;">Active</label>
+            <select id="sportIsActive">
+              <option value="1">Yes</option>
+              <option value="0">No</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Sport Name <span style="color:red;">*</span></label>
+            <input type="text" id="sportName" placeholder="e.g. Basketball" maxlength="180" />
+          </div>
+        </div>
+
+        <div class="sports-form-actions">
+          <button class="btn" id="resetSportFormBtn" style="background:#f0f2f5;color:#555;">Reset</button>
+          <button class="btn btn-primary" id="saveSportBtn">Save Sport</button>
+        </div>
+
+        <div class="admin-table-wrap sports-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>#</th><th>Code</th><th>Sport</th><th>Photo Path</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="sportsTableBody">
+              <tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Format Modal -->
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3>&#128196; Export Events</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:#666;font-size:.88rem;margin:0 0 18px;">Choose the format to export all current events:</p>
+        <div class="export-format-grid">
+          <button class="export-format-btn" id="exportCsvBtn">
+            <span class="export-format-icon">&#128196;</span>
+            <span class="export-format-label">CSV</span>
+            <span class="export-format-desc">Comma-separated values</span>
+          </button>
+          <button class="export-format-btn" id="exportExcelBtn">
+            <span class="export-format-icon">&#128202;</span>
+            <span class="export-format-label">Excel</span>
+            <span class="export-format-desc">Excel-compatible spreadsheet</span>
+          </button>
+          <button class="export-format-btn" id="exportPdfBtn">
+            <span class="export-format-icon">&#128209;</span>
+            <span class="export-format-label">PDF</span>
+            <span class="export-format-desc">Printable PDF document</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" onclick="closeModal('exportModal')">Cancel</button>
       </div>
     </div>
   </div>

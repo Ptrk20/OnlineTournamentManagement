@@ -101,7 +101,7 @@
   <section class="section-pad" style="background:#fff;">
     <div class="container">
       <div class="section-heading reveal"><span class="sub">Latest Updates</span><h2>News &amp; Highlights</h2><div class="section-divider"></div></div>
-      <div class="news-grid" id="news-list"><div class="spinner"></div></div>
+      <div id="news-list" class="home-news-shell"><div class="spinner"></div></div>
       <div class="text-center" style="margin-top:40px;"><a href="news.html" class="btn btn-dark">All News &rarr;</a></div>
     </div>
   </section>
@@ -115,15 +115,19 @@
         <p>Online Tournament Management helps organizers run campus sports events with better scheduling, tracking, reporting, and communication.</p>
       </div>
       <div class="about-grid">
-        <div class="about-image reveal">&#127942;</div>
+        <div class="about-image reveal">
+          <img
+            id="publicAboutImage"
+            src="src/images/placeholder.png"
+            alt="About OTM"
+            style="width:100%;height:100%;object-fit:cover;display:block;"
+          />
+        </div>
         <div class="about-content reveal">
-          <p>Our platform is built to simplify tournament operations from registration to final standings while keeping participants informed through fast updates.</p>
-          <ul class="about-list">
-            <li><span class="check">&#10003;</span> Event setup and match scheduling</li>
-            <li><span class="check">&#10003;</span> Live standings and result tracking</li>
-            <li><span class="check">&#10003;</span> SMS notifications powered by iTexMo</li>
-            <li><span class="check">&#10003;</span> Reports for organizers and admins</li>
-          </ul>
+          <h3 id="publicAboutTitle" style="color:var(--primary);margin-bottom:14px;">Online Tournament Management</h3>
+          <div id="publicAboutDescription">
+            <p>Our platform is built to simplify tournament operations from registration to final standings while keeping participants informed through fast updates.</p>
+          </div>
           <a href="about.html" class="btn btn-primary" style="margin-top:10px;">Learn More About Us</a>
         </div>
       </div>
@@ -144,21 +148,21 @@
             <div class="ci-icon">&#128205;</div>
             <div>
               <h4>Address</h4>
-              <p>Cavite, Philippines</p>
+              <p id="contactAddressDisplay">Cavite, Philippines</p>
             </div>
           </div>
           <div class="contact-detail">
             <div class="ci-icon">&#128222;</div>
             <div>
               <h4>Phone</h4>
-              <p>+63 000 000 0000</p>
+              <p id="contactPhoneDisplay">+63 000 000 0000</p>
             </div>
           </div>
           <div class="contact-detail">
             <div class="ci-icon">&#9993;</div>
             <div>
               <h4>Email</h4>
-              <p>info@otm.ph</p>
+              <p id="contactEmailDisplay">info@otm.ph</p>
             </div>
           </div>
         </div>
@@ -208,9 +212,9 @@
           <div class="footer-col">
             <h4>Contact</h4>
             <ul>
-              <li><a href="#">&#128205; Cavite, Philippines</a></li>
-              <li><a href="tel:+639123456789">&#128222; +63 000 000 0000</a></li>
-              <li><a href="mailto:info@otm.ph">&#9993; info@otm.ph</a></li>
+              <li><a href="#" data-footer-contact-address>&#128205; Cavite, Philippines</a></li>
+              <li><a href="tel:+639123456789" data-footer-contact-phone>&#128222; +63 000 000 0000</a></li>
+              <li><a href="mailto:info@otm.ph" data-footer-contact-email>&#9993; info@otm.ph</a></li>
             </ul>
           </div>
         </div>

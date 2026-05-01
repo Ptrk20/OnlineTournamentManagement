@@ -42,8 +42,17 @@ $password = trim($input['password']);
 $full_name = trim($input['full_name']);
 $email = trim($input['email']);
 $phone = isset($input['phone']) ? trim($input['phone']) : null;
-$role = isset($input['role']) ? trim($input['role']) : 'Organizer';
+$role = isset($input['role']) ? trim($input['role']) : 'Representative';
 $status = isset($input['status']) ? trim($input['status']) : 'Active';
+
+$valid_roles = ['Administrator', 'Representative'];
+if (!in_array($role, $valid_roles, true)) {
+    http_response_code(400);
+    die(json_encode([
+        'success' => false,
+        'message' => 'Invalid role. Must be Administrator or Representative.'
+    ]));
+}
 
 // Validate email format
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
