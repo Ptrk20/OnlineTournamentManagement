@@ -42,12 +42,19 @@
   <section class="section-pad" style="background:#fff;">
     <div class="container">
       <div class="about-grid">
-        <div class="about-image reveal">&#127942;</div>
+        <div class="about-image reveal" id="publicAboutImageWrap">
+          <img
+            id="publicAboutImage"
+            src="src/images/placeholder.png"
+            alt="Organization Photo"
+            style="width:100%;height:100%;object-fit:cover;display:block;"
+          />
+        </div>
         <div class="about-content reveal">
-          <h2>CSG Background</h2>
-          <p>The Online Tournament Management (OTM) system is a comprehensive, online computer-based website that provides organizers with the tools to organize, evaluate, and efficiently manage sporting events.</p>
-          <p>OTM is a collection of information management methods involving computer automation processes of managing events — otherwise supporting and improving the quality and efficiency of managing operations and human decision making.</p>
-          <p>It is also possible to get timely reports that provide a comprehensive overview of all the information needed to ensure every tournament runs smoothly from registration to final standings.</p>
+          <h2 id="publicAboutTitle">Online Tournament Management</h2>
+          <div id="publicAboutDescription">
+            <p>The Online Tournament Management (OTM) system is a comprehensive, online computer-based website that provides organizers with the tools to organize, evaluate, and efficiently manage sporting events.</p>
+          </div>
           <!-- <ul class="about-list">
             <li><span class="check">&#10003;</span> Real-time event management and bracket tracking</li>
             <li><span class="check">&#10003;</span> SMS blast notifications powered by iTexMo</li>
@@ -92,30 +99,13 @@
         <h2>Our Team</h2>
         <div class="section-divider"></div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:28px;">
+      <div id="publicTeamGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:28px;">
         <div class="reveal" style="text-align:center;">
-          <div style="width:90px;height:90px;background:linear-gradient(135deg,var(--primary),var(--accent));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;">&#128100;</div>
-          <h4 style="color:var(--primary);margin-bottom:4px;">Juan dela Cruz</h4>
-          <p style="color:var(--accent);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Project Lead</p>
-          <p style="color:var(--text-muted);font-size:.85rem;margin-top:8px;">Oversees overall project direction and stakeholder coordination.</p>
-        </div>
-        <div class="reveal" style="text-align:center;">
-          <div style="width:90px;height:90px;background:linear-gradient(135deg,#1565c0,var(--primary));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;">&#128100;</div>
-          <h4 style="color:var(--primary);margin-bottom:4px;">Maria Santos</h4>
-          <p style="color:var(--accent);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Front-End Developer</p>
-          <p style="color:var(--text-muted);font-size:.85rem;margin-top:8px;">Responsible for UI/UX design and HTML/CSS/JS implementation.</p>
-        </div>
-        <div class="reveal" style="text-align:center;">
-          <div style="width:90px;height:90px;background:linear-gradient(135deg,var(--accent),var(--accent-light));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;">&#128100;</div>
-          <h4 style="color:var(--primary);margin-bottom:4px;">Pedro Reyes</h4>
-          <p style="color:var(--accent);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Backend Developer</p>
-          <p style="color:var(--text-muted);font-size:.85rem;margin-top:8px;">Manages database architecture, JavaScript logic, and API integrations.</p>
-        </div>
-        <div class="reveal" style="text-align:center;">
-          <div style="width:90px;height:90px;background:linear-gradient(135deg,#2e7d32,#43a047);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;">&#128100;</div>
-          <h4 style="color:var(--primary);margin-bottom:4px;">Ana Garcia</h4>
-          <p style="color:var(--accent);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;">System Analyst</p>
-          <p style="color:var(--text-muted);font-size:.85rem;margin-top:8px;">Conducts requirements analysis and quality assurance testing.</p>
+          <div style="width:90px;height:90px;background:linear-gradient(135deg,var(--primary),var(--accent));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;overflow:hidden;">
+            <img src="src/images/placeholder.png" alt="Member Photo" style="width:100%;height:100%;object-fit:cover;display:block;" />
+          </div>
+          <h4 style="color:var(--primary);margin-bottom:4px;">No team members yet</h4>
+          <p style="color:var(--text-muted);font-size:.85rem;margin-top:8px;">Team members added in Admin About Us will appear here.</p>
         </div>
       </div>
     </div>

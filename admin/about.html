@@ -44,7 +44,7 @@
 
     <main class="admin-content">
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+      <div class="about-content-layout">
 
         <!-- Edit About Content -->
         <div class="admin-card">
@@ -54,31 +54,36 @@
           <div class="admin-card-body">
             <form id="aboutForm">
               <div class="admin-form-group" style="margin-bottom:16px;">
+                <label>Organization Photo</label>
+                <div class="org-image-picker">
+                  <img
+                    id="aboutOrgImagePreview"
+                    class="org-image-preview"
+                    src=""
+                    alt="Organization Photo Preview"
+                  />
+                  <div class="org-image-actions">
+                    <button type="button" class="btn btn-dark" id="aboutOrgImageBrowse">&#128247; Browse Photo</button>
+                    <button type="button" class="btn btn-danger" id="aboutOrgImageRemove">&#128465; Remove Photo</button>
+                    <input type="file" id="aboutOrgImageUpload" accept="image/*" hidden />
+                    <small class="help-text">Accepted formats: JPG, PNG, WEBP, GIF</small>
+                  </div>
+                </div>
+              </div>
+              <div class="admin-form-group" style="margin-bottom:16px;">
                 <label>Organization Name</label>
                 <input type="text" id="aboutOrgName" placeholder="Organization name" />
               </div>
               <div class="admin-form-group" style="margin-bottom:16px;">
-                <label>Tagline</label>
-                <input type="text" id="aboutTagline" placeholder="Short tagline or slogan" />
-              </div>
-              <div class="admin-form-group" style="margin-bottom:16px;">
                 <label>Description</label>
                 <textarea id="aboutDescription" rows="5" placeholder="Main about us text..."></textarea>
-              </div>
-              <div class="admin-form-group" style="margin-bottom:16px;">
-                <label>Mission</label>
-                <textarea id="aboutMission" rows="4" placeholder="Mission statement..."></textarea>
-              </div>
-              <div class="admin-form-group" style="margin-bottom:16px;">
-                <label>Vision</label>
-                <textarea id="aboutVision" rows="4" placeholder="Vision statement..."></textarea>
               </div>
               <button type="submit" class="btn btn-primary">Save Changes &#10003;</button>
             </form>
           </div>
         </div>
 
-        <!-- Preview -->
+        <!-- Preview
         <div class="admin-card">
           <div class="admin-card-header">
             <h3><span class="ch-icon">&#128065;</span> Preview</h3>
@@ -99,7 +104,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </div> -->
 
       </div>
 
@@ -111,9 +116,9 @@
         </div>
         <div class="admin-table-wrap">
           <table class="admin-table">
-            <thead><tr><th>#</th><th>Name</th><th>Role/Title</th><th>Bio</th><th>Actions</th></tr></thead>
+            <thead><tr><th>#</th><th>Name</th><th>Role/Title</th><th>Bio</th><th>Order</th><th>Actions</th></tr></thead>
             <tbody id="teamTableBody">
-              <tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;">No team members added yet.</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No team members added yet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -122,49 +127,60 @@
     </main>
   </div>
 
+  <!-- Team Member Modal -->
+  <div class="modal-overlay" id="memberModal">
+    <div class="modal" style="max-width:540px;">
+      <div class="modal-header">
+        <h3 id="memberModalTitle">Add Team Member</h3>
+        <button class="modal-close" type="button">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="memberId" />
+
+        <!-- Member photo -->
+        <div class="org-image-picker" style="margin-bottom:20px;">
+          <img
+            id="memberImagePreview"
+            class="org-image-preview"
+            src="../src/images/placeholder.png"
+            alt="Member Photo Preview"
+          />
+          <div class="org-image-actions">
+            <button type="button" class="btn btn-dark" id="memberImageBrowse">&#128247; Browse Photo</button>
+            <input type="file" id="memberImageUpload" accept="image/*" hidden />
+            <small class="help-text">Accepted formats: JPG, PNG, WEBP, GIF</small>
+          </div>
+        </div>
+
+        <div class="admin-form-grid">
+          <div class="admin-form-group">
+            <label>Full Name <span style="color:#c62828;">*</span></label>
+            <input type="text" id="memberFullName" placeholder="e.g. Juan dela Cruz" />
+          </div>
+          <div class="admin-form-group">
+            <label>Role / Title <span style="color:#c62828;">*</span></label>
+            <input type="text" id="memberRoleTitle" placeholder="e.g. Team Captain" />
+          </div>
+          <div class="admin-form-group full">
+            <label>Bio</label>
+            <textarea id="memberBio" rows="3" placeholder="Short biography or description..."></textarea>
+          </div>
+          <div class="admin-form-group">
+            <label>Display Order</label>
+            <select id="memberDisplayOrder"></select>
+            <small class="help-text" id="memberDisplayOrderHint"></small>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" onclick="closeModal('memberModal')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveMemberBtn">Save Member</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../js/main.js"></script>
   <script src="../js/auth.js"></script>
   <script src="../js/admin.js"></script>
-  <script>
-    const ABOUT_KEY = 'otm_about';
-
-    function loadAbout() {
-      const data = JSON.parse(localStorage.getItem(ABOUT_KEY)) || {};
-      document.getElementById('aboutOrgName').value    = data.orgName    || 'Online Tournament Management';
-      document.getElementById('aboutTagline').value    = data.tagline    || '';
-      document.getElementById('aboutDescription').value = data.description || '';
-      document.getElementById('aboutMission').value    = data.mission    || '';
-      document.getElementById('aboutVision').value     = data.vision     || '';
-      updatePreview();
-    }
-
-    function updatePreview() {
-      document.getElementById('previewName').textContent    = document.getElementById('aboutOrgName').value;
-      document.getElementById('previewTagline').textContent = document.getElementById('aboutTagline').value;
-      document.getElementById('previewDesc').textContent    = document.getElementById('aboutDescription').value;
-      document.getElementById('previewMission').textContent = document.getElementById('aboutMission').value;
-      document.getElementById('previewVision').textContent  = document.getElementById('aboutVision').value;
-    }
-
-    ['aboutOrgName','aboutTagline','aboutDescription','aboutMission','aboutVision'].forEach(id => {
-      document.getElementById(id).addEventListener('input', updatePreview);
-    });
-
-    document.getElementById('aboutForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const data = {
-        orgName:     document.getElementById('aboutOrgName').value,
-        tagline:     document.getElementById('aboutTagline').value,
-        description: document.getElementById('aboutDescription').value,
-        mission:     document.getElementById('aboutMission').value,
-        vision:      document.getElementById('aboutVision').value,
-      };
-      localStorage.setItem(ABOUT_KEY, JSON.stringify(data));
-      if (typeof adminToast === 'function') adminToast('About Us content saved.');
-      else alert('Saved!');
-    });
-
-    document.addEventListener('DOMContentLoaded', loadAbout);
-  </script>
 </body>
 </html>

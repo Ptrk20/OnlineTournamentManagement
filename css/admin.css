@@ -559,6 +559,36 @@
 
 .admin-form-group.has-error .error-text { display: block; }
 
+/* About Page */
+.about-content-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.org-image-picker {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.org-image-preview {
+  width: 180px;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1.5px dashed #c9d0de;
+  background: linear-gradient(135deg, #f4f6fb, #eef2fa);
+}
+
+.org-image-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* Chart Placeholder */
 .chart-box {
   background: #f8f9fc;
@@ -785,6 +815,7 @@
   .admin-content { padding: 18px; }
   .stats-row { grid-template-columns: 1fr 1fr; }
   .topbar-user .u-info { display: none; }
+  .org-image-preview { width: 140px; height: 140px; }
 }
 
 @media (max-width: 480px) {
