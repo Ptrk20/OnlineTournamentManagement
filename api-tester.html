@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTM API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .api-tester {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .api-header {
+            background: #333;
+            color: white;
+            padding: 15px 20px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .api-content {
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .response-box {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .response-box pre {
+            margin: 0;
+            font-size: 12px;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Online Tournament Management - API Tester</h1>
+        
+        <!-- Login API -->
+        <div class="api-tester">
+            <div class="api-header">
+                <span>🔐 User Login</span>
+                <code>POST /api/auth/login.php</code>
+            </div>
+            <div class="api-content">
+                <div class="form-group">
+                    <label>Username:</label>
+                    <input type="text" id="login_username" placeholder="admin" value="admin">
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" id="login_password" placeholder="Admin@2026" value="Admin@2026">
+                </div>
+                <div class="button-group">
+                    <button onclick="testLogin()">Test Login</button>
+                </div>
+                <div id="login_response" class="response-box" style="display:none;">
+                    <pre id="login_response_text"></pre>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Create User API -->
+            <div class="api-tester">
+                <div class="api-header">
+                    <span>➕ Create User</span>
+                    <code>POST /api/users/create.php</code>
+                </div>
+                <div class="api-content">
+                    <div class="form-group">
+                        <label>Username:</label>
+                        <input type="text" id="create_username" placeholder="newuser">
+                    </div>
+                    <div class="form-group">
+                        <label>Password:</label>
+                        <input type="password" id="create_password" placeholder="Password@123">
+                    </div>
+                    <div class="form-group">
+                        <label>Full Name:</label>
+                        <input type="text" id="create_fullname" placeholder="John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="create_email" placeholder="john@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone:</label>
+                        <input type="text" id="create_phone" placeholder="555-1234">
+                    </div>
+                    <div class="form-group">
+                        <label>Role:</label>
+                        <select id="create_role">
+                            <option value="Organizer">Organizer</option>
+                            <option value="Administrator">Administrator</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="testCreate()">Create User</button>
+                    </div>
+                    <div id="create_response" class="response-box" style="display:none;">
+                        <pre id="create_response_text"></pre>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Read Users API -->
+            <div class="api-tester">
+                <div class="api-header">
+                    <span>👥 Read Users</span>
+                    <code>GET /api/users/read.php</code>
+                </div>
+                <div class="api-content">
+                    <div class="form-group">
+                        <label>User ID (optional):</label>
+                        <input type="text" id="read_id" placeholder="Leave empty to get all">
+                    </div>
+                    <div class="form-group">
+                        <label>Filter by Role (optional):</label>
+                        <select id="read_role">
+                            <option value="">All Roles</option>
+                            <option value="Administrator">Administrator</option>
+                            <option value="Organizer">Organizer</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Filter by Status (optional):</label>
+                        <select id="read_status">
+                            <option value="">All Status</option>
+                            <option value="Active">Active</option>
+                            <option value="Inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="testRead()">Get Users</button>
+                    </div>
+                    <div id="read_response" class="response-box" style="display:none;">
+                        <pre id="read_response_text"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Update User API -->
+            <div class="api-tester">
+                <div class="api-header">
+                    <span>✏️ Update User</span>
+                    <code>PUT /api/users/update.php</code>
+                </div>
+                <div class="api-content">
+                    <div class="form-group">
+                        <label>User ID:</label>
+                        <input type="text" id="update_id" placeholder="2">
+                    </div>
+                    <div class="form-group">
+                        <label>Full Name (optional):</label>
+                        <input type="text" id="update_fullname" placeholder="Updated Name">
+                    </div>
+                    <div class="form-group">
+                        <label>Email (optional):</label>
+                        <input type="email" id="update_email" placeholder="updated@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password (optional):</label>
+                        <input type="password" id="update_password" placeholder="NewPassword@123">
+                    </div>
+                    <div class="form-group">
+                        <label>Status (optional):</label>
+                        <select id="update_status">
+                            <option value="">-- No Change --</option>
+                            <option value="Active">Active</option>
+                            <option value="Inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="testUpdate()">Update User</button>
+                    </div>
+                    <div id="update_response" class="response-box" style="display:none;">
+                        <pre id="update_response_text"></pre>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Delete User API -->
+            <div class="api-tester">
+                <div class="api-header">
+                    <span>🗑️ Delete User</span>
+                    <code>DELETE /api/users/delete.php</code>
+                </div>
+                <div class="api-content">
+                    <div class="form-group">
+                        <label>User ID to Delete:</label>
+                        <input type="text" id="delete_id" placeholder="2">
+                    </div>
+                    <div class="button-group">
+                        <button onclick="testDelete()" style="background: #dc3545;">Delete User</button>
+                    </div>
+                    <div id="delete_response" class="response-box" style="display:none;">
+                        <pre id="delete_response_text"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        function showResponse(elementId, response, success) {
+            const element = document.getElementById(elementId);
+            const textElement = document.getElementById(elementId + '_text');
+            element.style.display = 'block';
+            element.className = 'response-box ' + (success ? 'success' : 'error');
+            textElement.textContent = JSON.stringify(response, null, 2);
+        }
+        
+        async function testLogin() {
+            const username = document.getElementById('login_username').value;
+            const password = document.getElementById('login_password').value;
+            
+            try {
+                const response = await fetch(API_BASE + '/api/auth/login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                showResponse('login_response', data, data.success);
+            } catch (error) {
+                showResponse('login_response', { error: error.message }, false);
+            }
+        }
+        
+        async function testCreate() {
+            const data = {
+                username: document.getElementById('create_username').value,
+                password: document.getElementById('create_password').value,
+                full_name: document.getElementById('create_fullname').value,
+                email: document.getElementById('create_email').value,
+                phone: document.getElementById('create_phone').value,
+                role: document.getElementById('create_role').value
+            };
+            
+            try {
+                const response = await fetch(API_BASE + '/api/users/create.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                showResponse('create_response', result, result.success);
+            } catch (error) {
+                showResponse('create_response', { error: error.message }, false);
+            }
+        }
+        
+        async function testRead() {
+            let url = API_BASE + '/api/users/read.php';
+            const id = document.getElementById('read_id').value;
+            const role = document.getElementById('read_role').value;
+            const status = document.getElementById('read_status').value;
+            
+            const params = new URLSearchParams();
+            if (id) params.append('id', id);
+            if (role) params.append('role', role);
+            if (status) params.append('status', status);
+            
+            if (params.toString()) url += '?' + params.toString();
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                showResponse('read_response', data, data.success);
+            } catch (error) {
+                showResponse('read_response', { error: error.message }, false);
+            }
+        }
+        
+        async function testUpdate() {
+            const data = {};
+            const id = document.getElementById('update_id').value;
+            const fullname = document.getElementById('update_fullname').value;
+            const email = document.getElementById('update_email').value;
+            const password = document.getElementById('update_password').value;
+            const status = document.getElementById('update_status').value;
+            
+            if (!id) {
+                alert('User ID is required');
+                return;
+            }
+            
+            data.id = id;
+            if (fullname) data.full_name = fullname;
+            if (email) data.email = email;
+            if (password) data.password = password;
+            if (status) data.status = status;
+            
+            try {
+                const response = await fetch(API_BASE + '/api/users/update.php', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                showResponse('update_response', result, result.success);
+            } catch (error) {
+                showResponse('update_response', { error: error.message }, false);
+            }
+        }
+        
+        async function testDelete() {
+            const id = document.getElementById('delete_id').value;
+            
+            if (!id) {
+                alert('User ID is required');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to delete this user?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(API_BASE + '/api/users/delete.php', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                const result = await response.json();
+                showResponse('delete_response', result, result.success);
+            } catch (error) {
+                showResponse('delete_response', { error: error.message }, false);
+            }
+        }
+    </script>
+</body>
+</html>

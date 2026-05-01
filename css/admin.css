@@ -717,6 +717,21 @@
 .modal-body { padding: 24px; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; gap: 10px; justify-content: flex-end; }
 
+.modal-footer .btn-cancel {
+  background: #f0f2f5;
+  color: #555;
+  border: 1px solid #d8dde3;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.modal-footer .btn-cancel:hover,
+.modal-footer .btn-cancel:focus-visible {
+  background: #e4e9ef;
+  color: #2f3b4a;
+  border-color: #bfc8d4;
+  transform: translateY(-1px);
+}
+
 /* Admin Sidebar Collapsed */
 .sidebar.collapsed { width: 72px; }
 .sidebar.collapsed .sidebar-brand .brand-text,
