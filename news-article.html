@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article — OTM</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body id="newsArticlePage">
+
+  <nav class="navbar">
+    <div class="container">
+      <a href="index.html" class="nav-brand">
+        <div class="brand-icon">&#127942;</div>
+        <div>
+          <span class="brand-name">OTM</span>
+          <span class="brand-sub">Tournament Management</span>
+        </div>
+      </a>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="news.html" class="active">News</a></li>
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="contact.html">Contact Us</a></li>
+        <li><a href="login.html">&#128100; Login</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <section class="section-pad">
+    <div class="container">
+      <a href="news.html" class="article-back-link">&larr; Back to News</a>
+
+      <article class="article-view-card">
+        <div class="article-carousel">
+          <div class="article-carousel-track" id="articleCarouselTrack">
+            <div class="article-slide"><img src="src/images/placeholder.png" alt="Article image" /></div>
+          </div>
+          <button type="button" class="article-carousel-nav prev" id="articleCarouselPrev" aria-label="Previous image">&#10094;</button>
+          <button type="button" class="article-carousel-nav next" id="articleCarouselNext" aria-label="Next image">&#10095;</button>
+        </div>
+
+        <div class="article-carousel-dots" id="articleCarouselDots"></div>
+
+        <header class="article-header">
+          <h1 id="articleTitle">Loading article...</h1>
+          <p class="article-meta">Published: <span id="articleDate">-</span></p>
+        </header>
+
+        <div class="article-content" id="articleContent">
+          <p>Loading article content...</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
