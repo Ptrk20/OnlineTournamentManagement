@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPublicEvents();
   loadPublicNews();
   initNewsPage();
+  loadPublicAboutPage();
 });
 
 /* =============================================
@@ -534,7 +535,68 @@ function initNewsPage() {
 }
 
 /* =============================================
-   9. HELPER FUNCTIONS
+   9. LOAD PUBLIC ABOUT PAGE
+   ============================================= */
+async function loadPublicAboutPage() {
+  const titleEl = document.getElementById('publicAboutTitle');
+  const descriptionEl = document.getElementById('publicAboutDescription');
+  const imageEl = document.getElementById('publicAboutImage');
+  const teamGridEl = document.getElementById('publicTeamGrid');
+
+  if (!titleEl || !descriptionEl || !imageEl || !teamGridEl) return;
+
+  try {
+    const [contentRes, membersRes] = await Promise.all([
+      fetch('api/about/read-content.php'),
+      fetch('api/about/members/read.php')
+    ]);
+
+    const [contentJson, membersJson] = await Promise.all([
+      parsePublicApiJson(contentRes),
+      parsePublicApiJson(membersRes)
+    ]);
+
+    if (contentJson.success && contentJson.data) {
+      const content = contentJson.data;
+      titleEl.textContent = content.organization_name || 'Online Tournament Management';
+      imageEl.src = content.photo_path || 'src/images/placeholder.png';
+
+      const rawDescription = String(content.description || '').trim();
+      if (rawDescription) {
+        const paragraphs = rawDescription
+          .split(/\r?\n\s*\r?\n/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean);
+
+        if (paragraphs.length) {
+          descriptionEl.innerHTML = paragraphs
+            .map((paragraph) => `<p>${escapeHTML(paragraph)}</p>`)
+            .join('');
+        } else {
+          descriptionEl.innerHTML = `<p>${escapeHTML(rawDescription)}</p>`;
+        }
+      }
+    }
+
+    if (membersJson.success && Array.isArray(membersJson.data) && membersJson.data.length) {
+      teamGridEl.innerHTML = membersJson.data.map((member) => `
+        <div class="reveal revealed" style="text-align:center;">
+          <div style="width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#fff;margin:0 auto 16px;overflow:hidden;background:linear-gradient(135deg,var(--primary),var(--accent));">
+            <img src="${escapeHTML(member.photo_path || 'src/images/placeholder.png')}" alt="${escapeHTML(member.full_name || 'Member Photo')}" style="width:100%;height:100%;object-fit:cover;display:block;" />
+          </div>
+          <h4 style="color:var(--primary);margin-bottom:4px;">${escapeHTML(member.full_name || 'Team Member')}</h4>
+          <p style="color:var(--accent);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;">${escapeHTML(member.role_title || '')}</p>
+          <p style="color:var(--text-muted);font-size:.85rem;margin-top:8px;">${escapeHTML(member.bio || 'No biography available.')}</p>
+        </div>
+      `).join('');
+    }
+  } catch {
+    // Keep existing fallback content already in the markup.
+  }
+}
+
+/* =============================================
+   10. HELPER FUNCTIONS
    ============================================= */
 function escapeHTML(str) {
   if (typeof str !== 'string') return '';
@@ -557,8 +619,25 @@ function statusBadge(status) {
   return map[status] || 'primary';
 }
 
+async function parsePublicApiJson(response) {
+  const text = await response.text();
+  let parsed;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('Invalid API response.');
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed.message || 'Request failed.');
+  }
+
+  return parsed;
+}
+
 /* =============================================
-   10. DATA STORE — localStorage abstraction
+   11. DATA STORE — localStorage abstraction
        (replaces MySQL in pure front-end env;
         swap fetch() calls for real API)
    ============================================= */

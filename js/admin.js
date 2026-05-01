@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initUserManager();
   initAnnouncementManager();
   initContactManager();
+  initAboutManager();
   initReports();
 });
 
@@ -796,6 +797,381 @@ window.deleteMessage = function(id) {
   renderContactMessages();
   adminToast('Message deleted.', 'warning');
 };
+
+/* =============================================
+   ABOUT PAGE MANAGER
+   ============================================= */
+function initAboutManager() {
+  const aboutForm      = document.getElementById('aboutForm');
+  if (!aboutForm) return;
+
+  const aboutOrgNameEl     = document.getElementById('aboutOrgName');
+  const aboutDescriptionEl = document.getElementById('aboutDescription');
+  const imagePreviewEl     = document.getElementById('aboutOrgImagePreview');
+  const imageBrowseBtn     = document.getElementById('aboutOrgImageBrowse');
+  const imageRemoveBtn     = document.getElementById('aboutOrgImageRemove');
+  const imageUploadEl      = document.getElementById('aboutOrgImageUpload');
+  const addMemberBtn       = document.getElementById('addMemberBtn');
+  const saveMemberBtn      = document.getElementById('saveMemberBtn');
+  const memberImagePreview = document.getElementById('memberImagePreview');
+  const memberImageBrowse  = document.getElementById('memberImageBrowse');
+  const memberImageUpload  = document.getElementById('memberImageUpload');
+
+  const PLACEHOLDER_IMAGE    = '../src/images/placeholder.png';
+  const PLACEHOLDER_DB_PATH  = 'src/images/placeholder.png';
+
+  let currentPhotoPath     = '';   // org photo path stored in DB
+  let newPhotoFile         = null; // org photo selected but not yet uploaded
+  let currentMemberPhoto   = '';   // member photo path stored in DB
+  let newMemberPhotoFile   = null; // member photo selected but not yet uploaded
+  let memberCount          = 0;    // live count from last renderTeamTable call
+
+  // ── Helpers ───────────────────────────────────
+  const setOrgImagePreview = (path) => {
+    if (!imagePreviewEl) return;
+    imagePreviewEl.src = path ? '../' + path : PLACEHOLDER_IMAGE;
+  };
+
+  const setMemberImagePreview = (path) => {
+    if (!memberImagePreview) return;
+    memberImagePreview.src = path ? '../' + path : PLACEHOLDER_IMAGE;
+  };
+
+  /** Populate the Display Order <select> with options 1..max and select defaultVal */
+  const populateOrderSelect = (max, defaultVal) => {
+    const sel  = document.getElementById('memberDisplayOrder');
+    const hint = document.getElementById('memberDisplayOrderHint');
+    if (!sel) return;
+    sel.innerHTML = '';
+    for (let i = 1; i <= max; i++) {
+      const opt = document.createElement('option');
+      opt.value       = i;
+      opt.textContent = i;
+      if (i === defaultVal) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    if (hint) hint.textContent = `Valid range: 1 – ${max}`;
+  };
+
+  // ── Load About Content from DB ────────────────
+  const loadAboutContent = async () => {
+    try {
+      const res  = await fetch('../api/about/read-content.php');
+      const json = await parseApiJson(res);
+
+      if (json.success && json.data) {
+        const d = json.data;
+        if (aboutOrgNameEl)     aboutOrgNameEl.value     = d.organization_name || '';
+        if (aboutDescriptionEl) aboutDescriptionEl.value = d.description       || '';
+        currentPhotoPath = d.photo_path || '';
+        setOrgImagePreview(currentPhotoPath);
+      } else {
+        if (aboutOrgNameEl) aboutOrgNameEl.value = 'Online Tournament Management';
+        setOrgImagePreview('');
+      }
+    } catch {
+      adminToast('Failed to load about content.', 'error');
+    }
+  };
+
+  // ── Org image browse ──────────────────────────
+  if (imageBrowseBtn && imageUploadEl) {
+    imageBrowseBtn.addEventListener('click', () => imageUploadEl.click());
+  }
+
+  if (imageUploadEl) {
+    imageUploadEl.addEventListener('change', () => {
+      const file = imageUploadEl.files && imageUploadEl.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        adminToast('Please select a valid image file.', 'error');
+        imageUploadEl.value = '';
+        return;
+      }
+      newPhotoFile = file;
+      if (imagePreviewEl) imagePreviewEl.src = URL.createObjectURL(file);
+    });
+  }
+
+  // ── Org image remove ──────────────────────────
+  if (imageRemoveBtn) {
+    imageRemoveBtn.addEventListener('click', () => {
+      currentPhotoPath = '';
+      newPhotoFile     = null;
+      if (imageUploadEl) imageUploadEl.value = '';
+      setOrgImagePreview('');
+      adminToast('Organization photo removed.');
+    });
+  }
+
+  // ── Member image browse ───────────────────────
+  if (memberImageBrowse && memberImageUpload) {
+    memberImageBrowse.addEventListener('click', () => memberImageUpload.click());
+  }
+
+  if (memberImageUpload) {
+    memberImageUpload.addEventListener('change', () => {
+      const file = memberImageUpload.files && memberImageUpload.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        adminToast('Please select a valid image file.', 'error');
+        memberImageUpload.value = '';
+        return;
+      }
+      newMemberPhotoFile = file;
+      if (memberImagePreview) memberImagePreview.src = URL.createObjectURL(file);
+    });
+  }
+
+  // ── Save About Content to DB ──────────────────
+  aboutForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const orgName     = aboutOrgNameEl     ? aboutOrgNameEl.value.trim()     : '';
+    const description = aboutDescriptionEl ? aboutDescriptionEl.value.trim() : '';
+
+    if (!orgName) { adminToast('Organization name is required.', 'error'); return; }
+
+    let photoPath = currentPhotoPath;
+
+    // Upload new org photo first if one was selected
+    if (newPhotoFile) {
+      try {
+        const fd = new FormData();
+        fd.append('photo', newPhotoFile);
+        const upRes  = await fetch('../api/about/upload-photo.php', { method: 'POST', body: fd });
+        const upJson = await parseApiJson(upRes);
+        if (!upJson.success) throw new Error(upJson.message || 'Upload failed.');
+        photoPath        = upJson.path;
+        currentPhotoPath = photoPath;
+        newPhotoFile     = null;
+        if (imageUploadEl) imageUploadEl.value = '';
+        setOrgImagePreview(photoPath);
+      } catch (err) {
+        adminToast(err.message || 'Photo upload failed.', 'error');
+        return;
+      }
+    }
+
+    // Fall back to placeholder if no photo set at all
+    const finalPhotoPath = photoPath || PLACEHOLDER_DB_PATH;
+
+    const session   = AuthModule.getSession ? AuthModule.getSession() : null;
+    const updatedBy = session ? session.id : null;
+
+    try {
+      const res  = await fetch('../api/about/save-content.php', {
+        method  : 'POST',
+        headers : { 'Content-Type': 'application/json' },
+        body    : JSON.stringify({
+          organization_name : orgName,
+          description       : description,
+          photo_path        : finalPhotoPath,
+          updated_by        : updatedBy
+        })
+      });
+      const json = await parseApiJson(res);
+      if (!json.success) throw new Error(json.message || 'Save failed.');
+      adminToast('About Us content saved.');
+    } catch (err) {
+      adminToast(err.message || 'Failed to save about content.', 'error');
+    }
+  });
+
+  // ── Render Team Members table ─────────────────
+  const renderTeamTable = async () => {
+    const tbody = document.getElementById('teamTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">Loading...</td></tr>';
+
+    try {
+      const res  = await fetch('../api/about/members/read.php');
+      const json = await parseApiJson(res);
+
+      if (!json.success || !json.data || !json.data.length) {
+        memberCount = 0;
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;">No team members added yet.</td></tr>';
+        return;
+      }
+
+      memberCount = json.data.length;
+
+      tbody.innerHTML = json.data.map((m, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${escapeAdminHTML(m.full_name)}</td>
+          <td>${escapeAdminHTML(m.role_title)}</td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="${escapeAdminHTML(m.bio || '')}">${escapeAdminHTML(m.bio || '—')}</td>
+          <td>${escapeAdminHTML(String(m.display_order))}</td>
+          <td>
+            <div class="action-btns">
+              <button class="action-btn edit" title="Edit"   onclick="editTeamMember(${m.id})">&#9999;&#65039;</button>
+              <button class="action-btn del"  title="Delete" onclick="deleteTeamMember(${m.id})">&#128465;&#65039;</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } catch {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c62828;padding:20px;">Failed to load team members.</td></tr>';
+    }
+  };
+
+  // ── Clear modal form ──────────────────────────
+  const clearMemberForm = () => {
+    ['memberId', 'memberFullName', 'memberRoleTitle', 'memberBio'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    const titleEl  = document.getElementById('memberModalTitle');
+    if (titleEl)  titleEl.textContent = 'Add Team Member';
+
+    // Reset member photo
+    currentMemberPhoto = '';
+    newMemberPhotoFile = null;
+    if (memberImageUpload) memberImageUpload.value = '';
+    setMemberImagePreview('');
+
+    // Display order: options 1..(memberCount+1), default = memberCount+1
+    const newMax = memberCount + 1;
+    populateOrderSelect(newMax, newMax);
+  };
+
+  // ── Add Member button ─────────────────────────
+  if (addMemberBtn) {
+    addMemberBtn.addEventListener('click', () => {
+      clearMemberForm();
+      openModal('memberModal');
+    });
+  }
+
+  // ── Save Member (create or update) ───────────
+  if (saveMemberBtn) {
+    saveMemberBtn.addEventListener('click', async () => {
+      const id        = document.getElementById('memberId')?.value;
+      const fullName  = document.getElementById('memberFullName')?.value.trim();
+      const roleTitle = document.getElementById('memberRoleTitle')?.value.trim();
+      const bio       = document.getElementById('memberBio')?.value.trim() || null;
+      const order     = parseInt(document.getElementById('memberDisplayOrder')?.value, 10) || 1;
+
+      if (!fullName)  { adminToast('Full name is required.', 'error');  return; }
+      if (!roleTitle) { adminToast('Role/Title is required.', 'error'); return; }
+
+      // Validate display order range
+      const maxOrder = id ? memberCount : memberCount + 1;
+      if (order < 1 || order > maxOrder) {
+        adminToast(`Display order must be between 1 and ${maxOrder}.`, 'error');
+        return;
+      }
+
+      // Upload member photo if a new one was selected
+      let memberPhotoPath = currentMemberPhoto;
+      if (newMemberPhotoFile) {
+        try {
+          const fd = new FormData();
+          fd.append('photo', newMemberPhotoFile);
+          const upRes  = await fetch('../api/about/upload-photo.php', { method: 'POST', body: fd });
+          const upJson = await parseApiJson(upRes);
+          if (!upJson.success) throw new Error(upJson.message || 'Photo upload failed.');
+          memberPhotoPath    = upJson.path;
+          currentMemberPhoto = memberPhotoPath;
+          newMemberPhotoFile = null;
+          if (memberImageUpload) memberImageUpload.value = '';
+          setMemberImagePreview(memberPhotoPath);
+        } catch (err) {
+          adminToast(err.message || 'Photo upload failed.', 'error');
+          return;
+        }
+      }
+
+      // Fall back to placeholder if no photo set
+      const finalMemberPhoto = memberPhotoPath || PLACEHOLDER_DB_PATH;
+
+      const payload = {
+        full_name     : fullName,
+        role_title    : roleTitle,
+        bio,
+        photo_path    : finalMemberPhoto,
+        display_order : order
+      };
+      if (id) payload.id = Number(id);
+
+      const url    = id ? '../api/about/members/update.php' : '../api/about/members/create.php';
+      const method = id ? 'PUT' : 'POST';
+
+      try {
+        const res  = await fetch(url, {
+          method,
+          headers : { 'Content-Type': 'application/json' },
+          body    : JSON.stringify(payload)
+        });
+        const json = await parseApiJson(res);
+        if (!json.success) throw new Error(json.message || 'Save failed.');
+
+        closeModal('memberModal');
+        await renderTeamTable();
+        adminToast(id ? 'Member updated.' : 'Member added successfully.');
+      } catch (err) {
+        adminToast(err.message || 'Failed to save member.', 'error');
+      }
+    });
+  }
+
+  // ── Edit Member — global (called from table onclick) ──
+  window.editTeamMember = async (id) => {
+    try {
+      const res  = await fetch(`../api/about/members/read.php?id=${encodeURIComponent(id)}`);
+      const json = await parseApiJson(res);
+      if (!json.success || !json.data) throw new Error(json.message || 'Member not found.');
+
+      const m = json.data;
+      document.getElementById('memberId').value        = m.id;
+      document.getElementById('memberFullName').value  = m.full_name;
+      document.getElementById('memberRoleTitle').value = m.role_title;
+      document.getElementById('memberBio').value       = m.bio || '';
+
+      // Member photo
+      currentMemberPhoto = m.photo_path || '';
+      newMemberPhotoFile = null;
+      if (memberImageUpload) memberImageUpload.value = '';
+      setMemberImagePreview(currentMemberPhoto);
+
+      // Display order: options 1..memberCount (existing set), default = m.display_order
+      populateOrderSelect(memberCount || 1, Number(m.display_order));
+
+      const titleEl = document.getElementById('memberModalTitle');
+      if (titleEl) titleEl.textContent = 'Edit Team Member';
+
+      openModal('memberModal');
+    } catch (err) {
+      adminToast(err.message || 'Failed to load member.', 'error');
+    }
+  };
+
+  // ── Delete Member — global (called from table onclick) ──
+  window.deleteTeamMember = async (id) => {
+    if (!confirm('Delete this team member? This action cannot be undone.')) return;
+    try {
+      const res  = await fetch('../api/about/members/delete.php', {
+        method  : 'DELETE',
+        headers : { 'Content-Type': 'application/json' },
+        body    : JSON.stringify({ id: Number(id) })
+      });
+      const json = await parseApiJson(res);
+      if (!json.success) throw new Error(json.message || 'Delete failed.');
+
+      await renderTeamTable();
+      adminToast('Member deleted.', 'warning');
+    } catch (err) {
+      adminToast(err.message || 'Failed to delete member.', 'error');
+    }
+  };
+
+  // ── Init ──────────────────────────────────────
+  loadAboutContent();
+  renderTeamTable();
+}
 
 /* =============================================
    REPORTS
