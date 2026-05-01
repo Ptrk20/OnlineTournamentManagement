@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPublicNews();
   initNewsPage();
   loadPublicAboutPage();
+  loadPublicContactInfo();
 });
 
 /* =============================================
@@ -595,6 +596,33 @@ async function loadPublicAboutPage() {
   }
 }
 
+async function loadPublicContactInfo() {
+  const addressEl = document.getElementById('contactAddressDisplay');
+  const phoneEl   = document.getElementById('contactPhoneDisplay');
+  const emailEl   = document.getElementById('contactEmailDisplay');
+
+  if (!addressEl || !phoneEl || !emailEl) return;
+
+  try {
+    const res = await fetch('api/contact/read-info.php');
+    const data = await res.json();
+
+    if (data.success) {
+      addressEl.innerHTML = data.address
+        ? escapeHTML(data.address).replace(/\n/g, '<br>')
+        : addressEl.innerHTML;
+      phoneEl.innerHTML = data.phone
+        ? escapeHTML(data.phone).replace(/\n/g, '<br>')
+        : phoneEl.innerHTML;
+      emailEl.innerHTML = data.email
+        ? escapeHTML(data.email).replace(/\n/g, '<br>')
+        : emailEl.innerHTML;
+    }
+  } catch {
+    // Keep existing fallback content already in the markup.
+  }
+}
+
 /* =============================================
    10. HELPER FUNCTIONS
    ============================================= */
@@ -704,14 +732,17 @@ const DataStore = {
    ============================================= */
 const ContactAPI = {
   async submit(payload) {
-    // In production, replace with real API endpoint:
-    // return fetch('/api/contact', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r => r.ok);
-
-    // Save locally for now
-    const messages = DataStore.getMessages();
-    messages.unshift({ ...payload, id: Date.now(), read: false, date: new Date().toLocaleDateString() });
-    DataStore.saveMessages(messages);
-    return true;
+    try {
+      const resp = await fetch('api/contact/submit.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      return data.success === true;
+    } catch {
+      return false;
+    }
   }
 };
 

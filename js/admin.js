@@ -56,6 +56,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ── Topbar user popup ─────────────────────────
+  const topbarUser = document.querySelector('.topbar-user');
+  const userPopup  = document.getElementById('userPopup');
+
+  if (topbarUser && userPopup) {
+    topbarUser.addEventListener('click', (e) => {
+      e.stopPropagation();
+      userPopup.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!topbarUser.contains(e.target)) {
+        userPopup.classList.remove('open');
+      }
+    });
+  }
+
   // ── Init page-specific modules ────────────────
   initDashboard();
   initEventManager();
@@ -94,28 +111,36 @@ document.addEventListener('click', (e) => {
 /* =============================================
    ADMIN TOAST
    ============================================= */
-function adminToast(message, type = 'success') {
-  if (typeof showToast === 'function') { showToast(message, type); return; }
+function showToast(message, type = 'success') {
+  const colors = { success: '#4caf50', error: '#f44336', warning: '#ff6f00' };
+  const icons  = { success: '✅', error: '❌', warning: '⚠️' };
 
   let container = document.querySelector('.toast-container');
   if (!container) {
     container = document.createElement('div');
     container.className = 'toast-container';
-    container.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;';
+    container.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:10000;display:flex;flex-direction:column;gap:10px;';
     document.body.appendChild(container);
   }
 
-  const icons = { success: '✅', error: '❌', warning: '⚠️' };
-  const toast  = document.createElement('div');
+  const toast = document.createElement('div');
   toast.style.cssText = `
     background:#fff;border-radius:8px;padding:14px 20px;
     box-shadow:0 6px 24px rgba(0,0,0,.18);display:flex;align-items:center;
-    gap:12px;min-width:280px;animation:slideIn .35s ease;
-    border-left:4px solid ${type === 'success' ? '#2e7d32' : type === 'error' ? '#c62828' : '#ff6f00'};
+    gap:12px;min-width:280px;animation:slideIn .3s ease;
+    border-left:4px solid ${colors[type] || colors.success};
   `;
-  toast.innerHTML = `<span>${icons[type] || '✅'}</span><span style="font-size:.88rem;font-weight:500;color:#333;">${message}</span>`;
+  toast.innerHTML = `<span>${icons[type] || icons.success}</span><span style="font-size:.88rem;font-weight:500;color:#333;">${message}</span>`;
   container.appendChild(toast);
-  setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 350); }, 3500);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity .3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function adminToast(message, type = 'success') {
+  showToast(message, type);
 }
 
 /* =============================================
@@ -738,64 +763,191 @@ function clearAnnouncementForm() {
 function initContactManager() {
   const page = document.getElementById('adminContact');
   if (!page) return;
-  renderContactMessages();
+
+  loadContactMessages();
+
+  // ── Contact page info ─────────────────────────
+  loadContactInfo();
+
+  document.getElementById('contactModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'contactModal') closeContactModal();
+  });
 }
 
-function renderContactMessages() {
+async function loadContactMessages() {
+  try {
+    const resp = await fetch('../api/contact/read-messages.php');
+    const data = await resp.json();
+
+    if (!data.success) throw new Error(data.error || 'Failed to load messages');
+
+    const totalEl  = document.getElementById('totalMsgs');
+    const unreadEl = document.getElementById('unreadMsgs');
+    const readEl   = document.getElementById('readMsgs');
+    if (totalEl)  totalEl.textContent  = data.total;
+    if (unreadEl) unreadEl.textContent = data.unread;
+    if (readEl)   readEl.textContent   = data.read;
+
+    renderContactMessages(data.data);
+  } catch (err) {
+    console.error('Error loading messages:', err);
+    const tbody = document.getElementById('messagesTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#e53935;padding:30px;">Error loading messages.</td></tr>';
+  }
+}
+
+function renderContactMessages(msgs) {
   const tbody = document.getElementById('messagesTableBody');
   if (!tbody) return;
 
-  const msgs = DataStore.getMessages();
   if (!msgs.length) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">No messages.</td></tr>';
     return;
   }
 
   tbody.innerHTML = msgs.map((m, i) => `
-    <tr style="${!m.read ? 'background:#fffde7;' : ''}">
+    <tr style="${!m.is_read ? 'background:#fffde7;' : ''}">
       <td>${i + 1}</td>
-      <td>${escapeAdminHTML(m.name)}<br><small style="color:#aaa">${escapeAdminHTML(m.email)}</small></td>
+      <td>${escapeAdminHTML(m.full_name)}<br><small style="color:#aaa">${escapeAdminHTML(m.email)}</small></td>
       <td>${escapeAdminHTML(m.subject)}</td>
-      <td>${escapeAdminHTML(m.date)}</td>
+      <td>${escapeAdminHTML(m.submitted_at)}</td>
       <td>
         <div class="action-btns">
-          <button class="action-btn view" onclick="viewMessage(${m.id})">👁️</button>
-          <button class="action-btn del"  onclick="deleteMessage(${m.id})">🗑️</button>
+          <button class="action-btn view" onclick="viewMessage(${m.id})" title="View">&#128065;</button>
+          <button class="action-btn del"  onclick="deleteMessage(${m.id})" title="Delete">&#128465;</button>
         </div>
       </td>
     </tr>
   `).join('');
 }
 
-window.viewMessage = function(id) {
-  const msgs = DataStore.getMessages();
-  const idx  = msgs.findIndex(m => m.id === id);
-  if (idx < 0) return;
+window.viewMessage = async function(id) {
+  const tbody = document.getElementById('messagesTableBody');
+  const rows  = tbody ? tbody.querySelectorAll('tr') : [];
 
-  const m = msgs[idx];
-  msgs[idx].read = true;
-  DataStore.saveMessages(msgs);
+  // Find message data from already-rendered rows by re-fetching
+  try {
+    const resp = await fetch('../api/contact/read-messages.php');
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
 
-  const body = document.getElementById('msgViewBody');
-  if (body) {
-    body.innerHTML = `
-      <p><strong>From:</strong> ${escapeAdminHTML(m.name)} &lt;${escapeAdminHTML(m.email)}&gt;</p>
-      <p><strong>Subject:</strong> ${escapeAdminHTML(m.subject)}</p>
-      <p><strong>Date:</strong> ${escapeAdminHTML(m.date)}</p>
-      <hr style="margin:14px 0;border:none;border-top:1px solid #eee;">
-      <p style="white-space:pre-wrap;">${escapeAdminHTML(m.message)}</p>
-    `;
+    const m = data.data.find(msg => msg.id == id);
+    if (!m) return;
+
+    const body = document.getElementById('msgViewBody');
+    if (body) {
+      body.innerHTML = `
+        <p><strong>From:</strong> ${escapeAdminHTML(m.full_name)} &lt;${escapeAdminHTML(m.email)}&gt;</p>
+        <p><strong>Subject:</strong> ${escapeAdminHTML(m.subject)}</p>
+        <p><strong>Date:</strong> ${escapeAdminHTML(m.submitted_at)}</p>
+        <hr style="margin:14px 0;border:none;border-top:1px solid #eee;">
+        <p style="white-space:pre-wrap;">${escapeAdminHTML(m.message)}</p>
+      `;
+    }
+
+    openModal('msgViewModal');
+
+    // Mark as read if unread
+    if (!m.is_read) {
+      await fetch('../api/contact/mark-read.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      loadContactMessages();
+    }
+  } catch (err) {
+    console.error('Error viewing message:', err);
+    adminToast('Error loading message', 'error');
   }
-
-  openModal('msgViewModal');
-  renderContactMessages();
 };
 
-window.deleteMessage = function(id) {
+window.deleteMessage = async function(id) {
   if (!confirm('Delete this message?')) return;
-  DataStore.saveMessages(DataStore.getMessages().filter(m => m.id !== id));
-  renderContactMessages();
-  adminToast('Message deleted.', 'warning');
+  try {
+    const resp = await fetch('../api/contact/delete-message.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    adminToast('Message deleted.', 'warning');
+    loadContactMessages();
+  } catch (err) {
+    console.error('Error deleting message:', err);
+    adminToast('Error deleting message', 'error');
+  }
+};
+
+/* =============================================
+   CONTACT PAGE INFO
+   ============================================= */
+window.openContactModal = function() {
+  const modal = document.getElementById('contactModal');
+  if (modal) { modal.classList.add('open'); document.body.style.overflow = 'hidden'; }
+};
+
+window.closeContactModal = function() {
+  const modal = document.getElementById('contactModal');
+  if (modal) { modal.classList.remove('open'); document.body.style.overflow = 'auto'; }
+};
+
+async function loadContactInfo() {
+  try {
+    const resp = await fetch('../api/contact/read-info.php');
+    const data = await resp.json();
+    if (data.success) {
+      const addr  = document.getElementById('displayAddress');
+      const phone = document.getElementById('displayPhone');
+      const email = document.getElementById('displayEmail');
+      if (addr)  addr.innerHTML  = data.address ? data.address.replace(/\n/g, '<br>') : 'Not set';
+      if (phone) phone.innerHTML = data.phone   ? data.phone.replace(/\n/g, '<br>')   : 'Not set';
+      if (email) email.innerHTML = data.email   ? data.email.replace(/\n/g, '<br>')   : 'Not set';
+
+      const addrInput  = document.getElementById('contactAddress');
+      const phoneInput = document.getElementById('contactPhone');
+      const emailInput = document.getElementById('contactEmail');
+      if (addrInput)  addrInput.value  = data.address || '';
+      if (phoneInput) phoneInput.value = data.phone   || '';
+      if (emailInput) emailInput.value = data.email   || '';
+    }
+  } catch (err) {
+    console.error('Error loading contact info:', err);
+  }
+}
+
+window.saveContactInfo = async function() {
+  const btn = document.getElementById('saveContactBtn');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    const resp = await fetch('../api/contact/update-info.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: document.getElementById('contactAddress').value.trim(),
+        phone:   document.getElementById('contactPhone').value.trim(),
+        email:   document.getElementById('contactEmail').value.trim()
+      })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      showToast('Contact information saved successfully');
+      await loadContactInfo();
+      closeContactModal();
+    } else {
+      showToast('Error: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    console.error('Error saving contact info:', err);
+    showToast('Error saving contact information', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
 };
 
 /* =============================================

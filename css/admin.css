@@ -299,6 +299,73 @@
 .topbar-user .u-info .name  { font-size: 0.85rem; font-weight: 600; color: #333; display: block; }
 .topbar-user .u-info .role  { font-size: 0.72rem; color: #888; display: block; }
 
+/* User popup dropdown */
+.topbar-user { position: relative; }
+
+.user-popup {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.14);
+  border: 1px solid #e8eaf0;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.user-popup.open { display: block; }
+
+.user-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #1a237e, #283593);
+  color: #fff;
+}
+
+.user-popup-header .avatar {
+  width: 40px;
+  height: 40px;
+  background: rgba(255,255,255,.25);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.user-popup-header .popup-name  { font-size: 0.88rem; font-weight: 600; display: block; }
+.user-popup-header .popup-role  { font-size: 0.73rem; opacity: .8; display: block; }
+
+.user-popup-divider { height: 1px; background: #eee; }
+
+.user-popup-footer { padding: 10px; }
+
+.user-popup-footer .popup-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  color: #e53935;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .18s;
+  text-align: left;
+}
+
+.user-popup-footer .popup-logout-btn:hover { background: #fdecea; }
+
 /* Admin Page Content */
 .admin-content {
   padding: 28px;
@@ -801,6 +868,29 @@
 
 .quick-btn .q-icon { font-size: 1.6rem; margin-bottom: 8px; }
 .quick-btn .q-label { font-size: 0.78rem; font-weight: 600; color: #555; }
+
+/* Toast Notifications */
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+}
 
 /* Responsive Admin */
 @media (max-width: 992px) {
