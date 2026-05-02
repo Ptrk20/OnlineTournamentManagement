@@ -436,7 +436,6 @@ async function saveEvent() {
   const startDate = document.getElementById('eventStartDate')?.value || '';
   const endDate   = document.getElementById('eventEndDate')?.value || '';
   const location  = document.getElementById('eventLocation')?.value.trim() || '';
-  const teams     = document.getElementById('eventTeams')?.value || '';
   const desc      = document.getElementById('eventDesc')?.value.trim() || '';
   const status    = document.getElementById('eventStatus')?.value || 'Upcoming';
 
@@ -450,6 +449,7 @@ async function saveEvent() {
     return;
   }
 
+  // teams_count is auto-calculated from approved registrations; don't send it
   const payload = {
     id: id ? Number(id) : undefined,
     title,
@@ -458,7 +458,6 @@ async function saveEvent() {
     event_start_date: startDate,
     event_end_date:   endDate,
     location,
-    teams_count: teams !== '' ? Number(teams) : null,
     description: desc || null,
     status
   };
@@ -503,6 +502,9 @@ window.editEvent = async function(id) {
   document.getElementById('eventDesc').value        = ev.description || '';
   document.getElementById('eventStatus').value      = ev.status || 'Upcoming';
   document.getElementById('eventModalTitle').textContent = 'Edit Event';
+  // Show teams field for existing events
+  const teamsGroup = document.getElementById('eventTeamsGroup');
+  if (teamsGroup) teamsGroup.style.display = 'block';
 
   openModal('eventModal');
 };
@@ -540,6 +542,9 @@ function clearEventForm() {
   if (status) status.value = 'Upcoming';
   const titleEl = document.getElementById('eventModalTitle');
   if (titleEl) titleEl.textContent = 'Add New Event';
+  // Hide teams field for new events
+  const teamsGroup = document.getElementById('eventTeamsGroup');
+  if (teamsGroup) teamsGroup.style.display = 'none';
 }
 
 let sportsCache = [];

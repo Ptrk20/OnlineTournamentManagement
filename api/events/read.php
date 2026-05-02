@@ -18,8 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $cols = "e.id, e.public_id, e.title, e.sports_id, s.sport_name,
          e.category, e.event_start_date, e.event_end_date,
-         e.location, e.teams_count, e.description, e.status,
-         e.created_at, e.updated_at";
+         e.location, e.description, e.status,
+         e.created_at, e.updated_at,
+         COALESCE(COUNT(DISTINCT CASE WHEN tr.status='Approved' THEN tr.id END), 0) AS teams_count";
 
 if (isset($_GET['id'])) {
     $id = intval($_GET['id']);
@@ -32,7 +33,9 @@ if (isset($_GET['id'])) {
         "SELECT $cols
            FROM events e
       LEFT JOIN sports s ON s.id = e.sports_id
+      LEFT JOIN team_registrations tr ON tr.event_id = e.id
           WHERE e.id = ?
+       GROUP BY e.id
           LIMIT 1"
     );
     if (!$stmt) {
@@ -72,11 +75,11 @@ if (!empty($_GET['sports_id'])) {
     $types   .= 'i';
 }
 
-$sql = "SELECT $cols FROM events e LEFT JOIN sports s ON s.id = e.sports_id";
+$sql = "SELECT $cols FROM events e LEFT JOIN sports s ON s.id = e.sports_id LEFT JOIN team_registrations tr ON tr.event_id = e.id";
 if ($where) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
 }
-$sql .= ' ORDER BY e.event_start_date DESC';
+$sql .= ' GROUP BY e.id ORDER BY e.event_start_date DESC';
 
 $stmt = $conn->prepare($sql);
 if (!$stmt) {

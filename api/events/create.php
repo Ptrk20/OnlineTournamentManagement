@@ -50,7 +50,7 @@ if ($location === '') events_error(400, 'Location is required.');
 if (strlen($location) > 180) events_error(400, 'Location must not exceed 180 characters.');
 
 // ── Optional fields ────────────────────────────────────────────────────────
-$teamsCount  = isset($input['teams_count']) && $input['teams_count'] !== '' ? intval($input['teams_count']) : null;
+// teams_count is auto-calculated from approved registrations; ignore manual input
 $description = trim((string)($input['description'] ?? ''));
 $description = $description !== '' ? $description : null;
 $allowedStatuses = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
@@ -77,6 +77,7 @@ $stmt = $conn->prepare(
 );
 if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
 
+$teamsCount = 0; // Auto-calculated from registrations; always start at 0
 $stmt->bind_param(
     'ssissssissi',
     $publicId, $title, $sportsId, $category,
