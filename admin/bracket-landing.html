@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Event Bracket - OTM Admin</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+  <link rel="stylesheet" href="../css/bracket.css" />
+</head>
+<body class="bracket-body">
+  <div class="bracket-page">
+    <div class="bracket-top">
+      <div>
+        <h1 class="bracket-title" id="landingTitle">Event Bracket</h1>
+        <div class="bracket-sub" id="landingSub">Manage matches, schedules, and scores.</div>
+      </div>
+      <div>
+        <button class="btn" type="button" onclick="window.location.href='events.html'" style="background:#dce1ef;color:#222;">Back To Events</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <span class="bracket-chip" id="chipType">Type: -</span>
+      <span class="bracket-chip" id="chipCategory">Category: -</span>
+      <span class="bracket-chip" id="chipThird">3rd Place Match: -</span>
+      <span class="bracket-chip" id="chipTeams">Teams: 0</span>
+    </div>
+
+    <div class="bracket-stage" id="bracketStage"></div>
+  </div>
+
+  <div class="match-modal-overlay" id="matchModalOverlay">
+    <div class="match-modal">
+      <div class="match-modal-head">
+        <div class="tabs">
+          <button class="tab-btn" data-tab="teams">Select Teams</button>
+          <button class="tab-btn active" data-tab="info">Match Info</button>
+          <button class="tab-btn" data-tab="scores">Report Scores</button>
+        </div>
+        <button class="close-match-btn" id="closeMatchModal">&times;</button>
+      </div>
+      <div class="match-modal-body">
+        <div class="tab-pane" id="tab-teams">
+          <div class="field-grid">
+            <label>Team 1</label>
+            <select id="matchTeam1Select"></select>
+            <label>Team 2</label>
+            <select id="matchTeam2Select"></select>
+          </div>
+          <div class="actions-row">
+            <button class="btn-primary-match" id="saveMatchTeamsBtn">Save Teams</button>
+          </div>
+        </div>
+
+        <div class="tab-pane active" id="tab-info">
+          <div class="field-grid">
+            <label>Date</label>
+            <input type="date" id="matchDate" />
+            <label>Time</label>
+            <input type="time" id="matchTime" />
+            <label>Location</label>
+            <input type="text" id="matchLocation" placeholder="Court / Venue" />
+            <label>Description</label>
+            <textarea id="matchDescription" placeholder="Match details"></textarea>
+          </div>
+          <div class="actions-row">
+            <button class="btn-primary-match" id="saveMatchInfoBtn">Save Info</button>
+            <button class="btn-secondary-match" id="clearMatchInfoBtn">Clear Info</button>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-scores">
+          <div class="score-table" id="scoreTable"></div>
+          <div class="actions-row">
+            <button class="btn-primary-match" id="submitScoresBtn">Submit Scores</button>
+            <button class="btn-secondary-match" id="resetScoresBtn">Reset Scores</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/admin.js"></script>
+  <script src="../js/bracket-landing.js"></script>
+</body>
+</html>

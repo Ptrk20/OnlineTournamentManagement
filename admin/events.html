@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Manage Events — OTM Admin</title>
+  <title>Manage Events - OTM Admin</title>
   <link rel="stylesheet" href="../css/style.css" />
   <link rel="stylesheet" href="../css/admin.css" />
+  <link rel="stylesheet" href="../css/bracket.css" />
 </head>
 <body class="admin-body" id="adminEvents">
 
@@ -43,68 +44,133 @@
     <main class="admin-content">
       <div class="admin-card">
         <div class="admin-card-header">
-          <h3><span class="ch-icon">&#127942;</span> All Events</h3>
+          <h3><span class="ch-icon">&#127942;</span> Events</h3>
           <div class="admin-card-actions">
-            <input type="text" id="eventSearch" placeholder="Search events..." style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.85rem;width:220px;" />
-            <button class="btn" id="manageSportsBtn" style="background:#e8eaf6;color:#1a237e;font-size:.82rem;padding:8px 14px;">&#9917; Manage Sports</button>
-            <button class="btn btn-primary" id="addEventBtn" style="font-size:.82rem;padding:8px 16px;">+ Add Event</button>
-            <button class="btn" id="exportReportBtn" style="background:#f0f2f5;color:#555;font-size:.82rem;padding:8px 14px;">&#128196; Export</button>
+            <input type="text" id="eventSearch" placeholder="Search events by title..." style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.85rem;width:240px;" />
+            <button class="btn" id="manageSportsBtn" type="button" style="background:#e8eaf6;color:#1a237e;font-size:.82rem;padding:8px 14px;">Manage Sports</button>
+            <button class="btn" id="exportReportBtn" type="button" style="background:#f0f2f5;color:#333;font-size:.82rem;padding:8px 14px;">Export</button>
+            <button class="btn btn-primary" id="addEventBtn" type="button" style="font-size:.82rem;padding:8px 16px;">+ Add Event</button>
           </div>
         </div>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr><th>#</th><th>Event Title</th><th>Sport</th><th>Category</th><th>Start Date</th><th>End Date</th><th>Location</th><th>Status</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="eventsTableBody">
-              <tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>
-            </tbody>
-          </table>
+        <div class="admin-card-body">
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Event</th>
+                  <th>Sport</th>
+                  <th>Category</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="eventsTableBody">
+                <tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div id="inlineBracketPanel" class="inline-bracket-panel">
+          <div class="inline-bracket-panel-header">
+            <h3 id="inlineBracketTitle">Bracket - Event</h3>
+            <div>
+              <button class="btn" id="inlineCloseBracketPanelBtn" type="button" style="background:#f0f2f5;color:#333;">Close Bracket Panel</button>
+            </div>
+          </div>
+          <div style="margin-bottom:10px;">
+            <span class="inline-bracket-chip" id="inlineChipType">Type: -</span>
+            <span class="inline-bracket-chip" id="inlineChipCategory">Category: -</span>
+            <span class="inline-bracket-chip" id="inlineChipThird">3rd Place Match: -</span>
+            <span class="inline-bracket-chip" id="inlineChipTeams">Teams: 0</span>
+          </div>
+          <div class="inline-bracket-shell">
+            <div class="inline-bracket-stage" id="inlineBracketStage"></div>
+          </div>
+
+          <div id="inlineMatchEditorPanel" class="inline-match-editor-panel">
+            <div class="inline-bracket-panel-header">
+              <h3 style="margin:0;">Match Editor</h3>
+              <button class="btn" id="inlineCloseMatchPanelBtn" type="button" style="background:#f0f2f5;color:#333;">Close</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+              <button class="btn" id="inlineTabInfo" type="button" style="background:#e8eaf6;color:#1a237e;">Match Info</button>
+              <button class="btn" id="inlineTabScores" type="button" style="background:#f0f2f5;color:#333;">Report Scores</button>
+            </div>
+            <div id="inlinePaneInfo">
+              <div class="admin-form-grid two">
+                <div class="admin-form-group"><label>Date</label><input type="date" id="inlineMatchDate" /></div>
+                <div class="admin-form-group"><label>Time</label><input type="time" id="inlineMatchTime" /></div>
+                <div class="admin-form-group"><label>Location</label><input type="text" id="inlineMatchLocation" /></div>
+                <div class="admin-form-group"><label>Description</label><input type="text" id="inlineMatchDescription" /></div>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button class="btn" id="inlineClearMatchInfoBtn" type="button" style="background:#f0f2f5;color:#333;">Clear Info</button>
+                <button class="btn btn-primary" id="inlineSaveMatchInfoBtn" type="button">Save Info</button>
+              </div>
+            </div>
+            <div id="inlinePaneScores" style="display:none;">
+              <div id="inlineScoreTable"></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+                <button class="btn" id="inlineResetScoresBtn" type="button" style="background:#f0f2f5;color:#333;">Reset Scores</button>
+                <button class="btn btn-primary" id="inlineSubmitScoresBtn" type="button">Submit Scores</button>
+              </div>
+            </div>
+          </div>
+        </div>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- Add/Edit Event Modal -->
   <div class="modal-overlay" id="eventModal">
-    <div class="modal" style="max-width:640px;">
+    <div class="modal" style="max-width:860px;">
       <div class="modal-header">
-        <h3 id="eventModalTitle">Add New Event</h3>
+        <h3 id="eventModalTitle">Add Event</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="eventId" />
-        <div class="admin-form-grid">
-          <div class="admin-form-group full">
+        <div class="admin-form-grid two">
+          <div class="admin-form-group">
             <label>Event Title <span style="color:red;">*</span></label>
-            <input type="text" id="eventTitle" placeholder="e.g. National Basketball Championship 2026" />
+            <input type="text" id="eventTitle" maxlength="180" />
           </div>
           <div class="admin-form-group">
             <label>Sport <span style="color:red;">*</span></label>
-            <select id="eventSportsId">
-              <option value="">— Select Sport —</option>
-            </select>
+            <select id="eventSportsId"></select>
           </div>
           <div class="admin-form-group">
             <label>Category <span style="color:red;">*</span></label>
             <select id="eventCategory">
-              <option value="">— Select Category —</option>
+              <option value="">Select category</option>
               <option value="Mens">Mens</option>
               <option value="Womens">Womens</option>
-              <option value="Open">Open</option>
+              <option value="Mixed">Mixed</option>
             </select>
           </div>
           <div class="admin-form-group">
-            <label>Start Date &amp; Time <span style="color:red;">*</span></label>
+            <label>Tournament Type</label>
+            <select id="eventTournamentType">
+              <option value="single_elimination">Single Elimination</option>
+              <option value="double_elimination">Double Elimination</option>
+              <option value="round_robin">Round Robin</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Start Date <span style="color:red;">*</span></label>
             <input type="datetime-local" id="eventStartDate" />
           </div>
           <div class="admin-form-group">
-            <label>End Date &amp; Time <span style="color:red;">*</span></label>
+            <label>End Date <span style="color:red;">*</span></label>
             <input type="datetime-local" id="eventEndDate" />
           </div>
           <div class="admin-form-group">
             <label>Location <span style="color:red;">*</span></label>
-            <input type="text" id="eventLocation" placeholder="Venue / City" />
+            <input type="text" id="eventLocation" />
           </div>
           <div class="admin-form-group">
             <label>Status</label>
@@ -115,14 +181,20 @@
               <option value="Cancelled">Cancelled</option>
             </select>
           </div>
-          <div class="admin-form-group" id="eventTeamsGroup" style="display:none;">
-            <label>Number of Teams</label>
-            <input type="text" id="eventTeams" placeholder="Auto-calculated from approved registrations" readonly />
-            <small style="color:#666;font-size:.75rem;margin-top:4px;">This is automatically calculated based on the number of approved team registrations for this event.</small>
+          <div class="admin-form-group" id="eventTeamsGroup">
+            <label>Teams (Approved Registrations)</label>
+            <input type="number" id="eventTeams" readonly />
           </div>
-          <div class="admin-form-group full">
+          <div class="admin-form-group">
+            <label>3rd Place Match</label>
+            <div style="display:flex;gap:14px;align-items:center;min-height:40px;">
+              <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="eventThirdPlace" value="yes" checked /> Yes</label>
+              <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="eventThirdPlace" value="no" /> No</label>
+            </div>
+          </div>
+          <div class="admin-form-group" style="grid-column:1 / -1;">
             <label>Description</label>
-            <textarea id="eventDesc" rows="3" placeholder="Brief description of the event..."></textarea>
+            <textarea id="eventDesc" rows="4"></textarea>
           </div>
         </div>
       </div>
@@ -222,6 +294,35 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-cancel" onclick="closeModal('exportModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Bracketing Modal -->
+  <div class="modal-overlay" id="eventBracketingModal">
+    <div class="modal" style="max-width:900px;">
+      <div class="modal-header">
+        <h3 id="bracketModalTitle">Event Bracketing</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height:70vh;overflow:auto;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <span id="bracketEventTag" style="display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#e8eaf6;color:#1a237e;font-size:.78rem;font-weight:600;">Event: -</span>
+          <span id="bracketCategoryTag" style="display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#e0f2f1;color:#00695c;font-size:.78rem;font-weight:600;">Category: -</span>
+          <span id="bracketTypeTag" style="display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#ede7f6;color:#4527a0;font-size:.78rem;font-weight:600;">Type: -</span>
+          <span id="bracketTeamsTag" style="display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#fff3e0;color:#ef6c00;font-size:.78rem;font-weight:600;">Approved Teams: 0</span>
+        </div>
+
+        <div id="bracketModalState" style="color:#666;font-size:.9rem;padding:4px 2px 10px;">Loading teams...</div>
+
+        <div id="registeredTeamsWrap" style="display:none;margin-top:14px;">
+          <h4 style="margin:8px 0 10px;font-size:.95rem;color:#333;">Approved Teams</h4>
+          <div id="registeredTeamsList" class="admin-table-wrap"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="generateBracketBtn">Create Bracket</button>
+        <button type="button" class="btn btn-cancel" onclick="closeModal('eventBracketingModal')">Close</button>
       </div>
     </div>
   </div>

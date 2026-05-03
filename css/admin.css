@@ -562,6 +562,13 @@
 .action-btn.view   { background: #e0f2f1; color: #00695c; }
 .action-btn.send   { background: #fff3e0; color: #ff6f00; }
 
+.action-btn-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  display: block;
+}
+
 .action-btn:hover { opacity: 0.8; transform: scale(1.1); }
 
 /* Admin Form */

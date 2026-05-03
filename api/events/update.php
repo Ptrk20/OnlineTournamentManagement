@@ -62,6 +62,11 @@ if (strlen($location) > 180) events_error(400, 'Location must not exceed 180 cha
 
 $description = trim((string)($input['description'] ?? ''));
 $description = $description !== '' ? $description : null;
+$allowedTournamentTypes = ['single_elimination', 'double_elimination', 'round_robin'];
+$tournamentType = trim((string)($input['tournament_type'] ?? 'single_elimination'));
+if (!in_array($tournamentType, $allowedTournamentTypes, true)) $tournamentType = 'single_elimination';
+$roundRobinFormat = 'once';
+$hasThirdPlaceMatch = !empty($input['has_third_place_match']) ? 1 : 0;
 $allowedStatuses = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
 $status      = in_array($input['status'] ?? '', $allowedStatuses, true) ? $input['status'] : 'Upcoming';
 
@@ -77,17 +82,21 @@ $stmt = $conn->prepare(
     "UPDATE events
         SET title = ?, sports_id = ?, category = ?,
             event_start_date = ?, event_end_date = ?,
-            location = ?, teams_count = ?, description = ?, status = ?
+            location = ?, teams_count = ?, tournament_type = ?,
+            round_robin_format = ?, has_third_place_match = ?,
+            description = ?, status = ?
       WHERE id = ?"
 );
 if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
 
 $teamsCount = 0; // Auto-calculated from registrations; always set to 0
 $stmt->bind_param(
-    'sissssissi',
+    'sissssississi',
     $title, $sportsId, $category,
     $startDate, $endDate,
-    $location, $teamsCount, $description, $status,
+    $location, $teamsCount, $tournamentType,
+    $roundRobinFormat, $hasThirdPlaceMatch,
+    $description, $status,
     $id
 );
 

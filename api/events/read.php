@@ -18,7 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $cols = "e.id, e.public_id, e.title, e.sports_id, s.sport_name,
          e.category, e.event_start_date, e.event_end_date,
-         e.location, e.description, e.status,
+         e.location, e.tournament_type, e.round_robin_format,
+         e.has_third_place_match, e.description, e.status,
          e.created_at, e.updated_at,
          COALESCE(COUNT(DISTINCT CASE WHEN tr.status='Approved' THEN tr.id END), 0) AS teams_count";
 

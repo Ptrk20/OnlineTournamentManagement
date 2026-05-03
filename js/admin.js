@@ -255,6 +255,16 @@ function drawEventChart() {
    EVENTS MANAGER
    ============================================= */
 let eventsCache = [];
+let bracketSetupContext = {
+  event: null,
+  teams: [],
+  existingBracketId: null,
+  existingParticipantCount: null,
+  existingTournamentType: null,
+  existingThirdPlace: null
+};
+let inlineBracketData = null;
+let inlineBracketSelectedMatchId = null;
 
 async function loadSportsDropdown() {
   const sel = document.getElementById('eventSportsId');
@@ -300,6 +310,13 @@ function initEventManager() {
   // Search (client-side filter against cached data)
   const search = document.getElementById('eventSearch');
   if (search) search.addEventListener('input', () => renderEventsTable(search.value));
+
+  const generateBtn = document.getElementById('generateBracketBtn');
+  if (generateBtn) {
+    generateBtn.addEventListener('click', generateTournamentBracket);
+  }
+
+  initInlineBracketLanding();
 
   // Sports manager
   const manageSportsBtn = document.getElementById('manageSportsBtn');
@@ -420,6 +437,7 @@ async function renderEventsTable(filter = '') {
       <td><span class="badge badge-${statusBadge(ev.status)}">${escapeAdminHTML(ev.status)}</span></td>
       <td>
         <div class="action-btns">
+          <button class="action-btn view" title="Bracketing" onclick="openEventBracketing(${Number(ev.id)})"><img src="../src/images/tournament-bracket.png" alt="Bracketing" class="action-btn-icon" /></button>
           <button class="action-btn edit" title="Edit" onclick="editEvent(${Number(ev.id)})">✏️</button>
           <button class="action-btn del"  title="Delete" onclick="deleteEvent(${Number(ev.id)})">🗑️</button>
         </div>
@@ -438,6 +456,8 @@ async function saveEvent() {
   const location  = document.getElementById('eventLocation')?.value.trim() || '';
   const desc      = document.getElementById('eventDesc')?.value.trim() || '';
   const status    = document.getElementById('eventStatus')?.value || 'Upcoming';
+  const tournamentType = document.getElementById('eventTournamentType')?.value || 'single_elimination';
+  const hasThirdPlaceMatch = (document.querySelector('input[name="eventThirdPlace"]:checked')?.value || 'yes') === 'yes';
 
   if (!title || !sportsId || !category || !startDate || !endDate || !location) {
     adminToast('Please fill in all required fields.', 'error');
@@ -458,6 +478,8 @@ async function saveEvent() {
     event_start_date: startDate,
     event_end_date:   endDate,
     location,
+    tournament_type: tournamentType,
+    has_third_place_match: hasThirdPlaceMatch,
     description: desc || null,
     status
   };
@@ -501,6 +523,11 @@ window.editEvent = async function(id) {
   document.getElementById('eventTeams').value       = ev.teams_count != null ? ev.teams_count : '';
   document.getElementById('eventDesc').value        = ev.description || '';
   document.getElementById('eventStatus').value      = ev.status || 'Upcoming';
+  document.getElementById('eventTournamentType').value = ev.tournament_type || 'single_elimination';
+  const hasThirdPlace = ev.has_third_place_match == null ? 1 : Number(ev.has_third_place_match);
+  const thirdPlaceChoice = hasThirdPlace === 1 ? 'yes' : 'no';
+  const thirdPlaceEl = document.querySelector(`input[name="eventThirdPlace"][value="${thirdPlaceChoice}"]`);
+  if (thirdPlaceEl) thirdPlaceEl.checked = true;
   document.getElementById('eventModalTitle').textContent = 'Edit Event';
   // Show teams field for existing events
   const teamsGroup = document.getElementById('eventTeamsGroup');
@@ -530,6 +557,1070 @@ window.deleteEvent = async function(id) {
   }
 };
 
+function renderRegisteredTeamsTable(teams) {
+  const wrap = document.getElementById('registeredTeamsWrap');
+  const list = document.getElementById('registeredTeamsList');
+  if (!wrap || !list) return;
+
+  if (!teams.length) {
+    wrap.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  list.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Team</th>
+          <th>Representative</th>
+          <th>Approved At</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${teams.map((team, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${escapeAdminHTML(team.team_name || 'Unnamed Team')}</td>
+            <td>${escapeAdminHTML(team.representative_name || '-')}</td>
+            <td>${formatEventDate(team.reviewed_at || team.submitted_at || team.created_at)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function setGenerateBracketAvailability(
+  teamsCount,
+  existingBracketId = null,
+  existingParticipantCount = null,
+  existingTournamentType = null,
+  existingThirdPlace = null,
+  currentTournamentType = null,
+  currentThirdPlace = null
+) {
+  const stateEl = document.getElementById('bracketModalState');
+  const btn = document.getElementById('generateBracketBtn');
+  if (!stateEl || !btn) return;
+
+  const hasExisting = existingBracketId && Number(existingBracketId) > 0;
+  const sameTeamCount = hasExisting && existingParticipantCount != null && Number(existingParticipantCount) === Number(teamsCount);
+  const sameType = !hasExisting || String(existingTournamentType || '') === String(currentTournamentType || '');
+  const sameThirdPlace = !hasExisting || Number(existingThirdPlace ? 1 : 0) === Number(currentThirdPlace ? 1 : 0);
+  const sameConfig = sameType && sameThirdPlace;
+
+  if (sameTeamCount && sameConfig) {
+    stateEl.textContent = 'Saved bracket found for this event. Click View Bracket to open it.';
+    btn.disabled = false;
+    btn.textContent = 'View Bracket';
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    return;
+  }
+
+  if (hasExisting && Number(teamsCount) >= 3) {
+    const reasons = [];
+    if (!sameTeamCount) reasons.push(`team count changed (${teamsCount})`);
+    if (!sameType) reasons.push('tournament type changed');
+    if (!sameThirdPlace) reasons.push('3rd place setting changed');
+    const reasonText = reasons.length ? reasons.join(', ') : 'settings changed';
+    stateEl.textContent = `Saved bracket is out of date (${reasonText}). Click Regenerate Bracket.`;
+    btn.disabled = false;
+    btn.textContent = 'Regenerate Bracket';
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    return;
+  }
+
+  btn.textContent = 'Create Bracket';
+
+  if (teamsCount < 3) {
+    stateEl.textContent = 'Minimum of 3 approved teams is required to create a bracket.';
+    btn.disabled = true;
+    btn.style.opacity = '.6';
+    btn.style.cursor = 'not-allowed';
+    return;
+  }
+
+  stateEl.textContent = 'Approved teams loaded. Click Create Bracket to continue.';
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.style.cursor = 'pointer';
+}
+
+window.openEventBracketing = async function(id) {
+  const ev = eventsCache.find(e => Number(e.id) === Number(id));
+  if (!ev) {
+    adminToast('Event not found for bracketing.', 'error');
+    return;
+  }
+
+  const eventTag = document.getElementById('bracketEventTag');
+  const categoryTag = document.getElementById('bracketCategoryTag');
+  const typeTag = document.getElementById('bracketTypeTag');
+  const teamsTag = document.getElementById('bracketTeamsTag');
+  const stateEl = document.getElementById('bracketModalState');
+  const titleEl = document.getElementById('bracketModalTitle');
+
+  if (!eventTag || !categoryTag || !typeTag || !teamsTag || !stateEl) {
+    adminToast('Bracketing modal is not available on this page.', 'error');
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = `Event Bracketing - ${ev.title || 'Event'}`;
+  eventTag.textContent = `Event: ${ev.title || '-'}`;
+  categoryTag.textContent = `Category: ${ev.category || '-'}`;
+  typeTag.textContent = `Type: ${String(ev.tournament_type || 'single_elimination').replace(/_/g, ' ')}`;
+  teamsTag.textContent = 'Approved Teams: 0';
+  stateEl.textContent = 'Loading teams...';
+  bracketSetupContext = {
+    event: ev,
+    teams: [],
+    existingBracketId: null,
+    existingParticipantCount: null,
+    existingTournamentType: null,
+    existingThirdPlace: null
+  };
+
+  openModal('eventBracketingModal');
+
+  // Check if a bracket already exists for this event.
+  try {
+    const bracketRes = await fetch(`../api/brackets/read.php?event_id=${Number(ev.id)}`);
+    const bracketJson = await bracketRes.json();
+    if (bracketJson.success && bracketJson.data && Number(bracketJson.data.bracket_id) > 0) {
+      bracketSetupContext.existingBracketId = Number(bracketJson.data.bracket_id);
+      bracketSetupContext.existingParticipantCount = Number(bracketJson.data.participant_count || 0);
+      bracketSetupContext.existingTournamentType = String(bracketJson.data.tournament_type || 'single_elimination');
+      bracketSetupContext.existingThirdPlace = Number(bracketJson.data.has_third_place_match ? 1 : 0) === 1;
+    }
+  } catch (err) {
+    console.warn('Existing bracket check failed:', err);
+  }
+
+  try {
+    const res = await fetch('../api/registrations/read.php');
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to load registrations.');
+
+    const rows = Array.isArray(json.data) ? json.data : [];
+    const approved = rows
+      .filter(r => Number(r.event_id) === Number(ev.id) && String(r.status || '').toLowerCase() === 'approved')
+      .sort((a, b) => {
+        const aTime = new Date(a.submitted_at || a.created_at || 0).getTime();
+        const bTime = new Date(b.submitted_at || b.created_at || 0).getTime();
+        return aTime - bTime;
+      });
+
+    bracketSetupContext.teams = approved;
+    teamsTag.textContent = `Approved Teams: ${approved.length}`;
+
+    renderRegisteredTeamsTable(approved);
+    setGenerateBracketAvailability(
+      approved.length,
+      bracketSetupContext.existingBracketId,
+      bracketSetupContext.existingParticipantCount,
+      bracketSetupContext.existingTournamentType,
+      bracketSetupContext.existingThirdPlace,
+      String(ev.tournament_type || 'single_elimination'),
+      (ev.has_third_place_match == null ? true : Number(ev.has_third_place_match) === 1)
+    );
+  } catch (err) {
+    console.error('openEventBracketing error:', err);
+    stateEl.textContent = err.message || 'Failed to load bracket data.';
+  }
+};
+
+function buildAutoPairings(teams) {
+  const slots = [];
+  for (let i = 0; i < teams.length; i += 2) {
+    slots.push({
+      teamA: teams[i] || null,
+      teamB: teams[i + 1] || null
+    });
+  }
+  return slots;
+}
+
+function buildEmptyPairingsByTeamCount(teamCount) {
+  const matchCount = Math.max(2, Math.ceil(Number(teamCount || 0) / 2));
+  return Array.from({ length: matchCount }, () => ({ teamA: null, teamB: null }));
+}
+
+function eliminationRoundLabelByMatchCount(matchCount, roundNo) {
+  if (matchCount === 1) return 'Finals';
+  if (matchCount === 2) return 'Semifinals';
+  if (matchCount === 4) return 'Quarterfinals';
+  if (matchCount === 8) return 'Round of 16';
+  if (matchCount === 16) return 'Round of 32';
+  return `Round ${roundNo}`;
+}
+
+function generateSingleEliminationPayload(manualPairings) {
+  const matches = [];
+  let matchId = 1;
+  const rounds = [];
+
+  rounds.push(manualPairings.map(pair => {
+    const m = {
+      id: matchId++,
+      round: 1,
+      label: '',
+      team1: pair.teamA,
+      team2: pair.teamB,
+      score1: 0,
+      score2: 0,
+      winner_team_id: null,
+      status: 'Pending',
+      date: '',
+      time: '',
+      location: '',
+      description: '',
+      next_match_id: null,
+      next_slot: null
+    };
+    matches.push(m);
+    return m;
+  }));
+
+  let prevRound = rounds[0];
+  let roundNo = 2;
+  while (prevRound.length > 1) {
+    const nextRound = [];
+    for (let i = 0; i < prevRound.length; i += 2) {
+      const m = {
+        id: matchId++,
+        round: roundNo,
+        label: '',
+        team1: null,
+        team2: null,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      };
+      matches.push(m);
+      nextRound.push(m);
+      if (prevRound[i]) {
+        prevRound[i].next_match_id = m.id;
+        prevRound[i].next_slot = 'team1';
+      }
+      if (prevRound[i + 1]) {
+        prevRound[i + 1].next_match_id = m.id;
+        prevRound[i + 1].next_slot = 'team2';
+      }
+    }
+    rounds.push(nextRound);
+    prevRound = nextRound;
+    roundNo += 1;
+  }
+
+  rounds.forEach((roundMatches, idx) => {
+    const roundLabel = eliminationRoundLabelByMatchCount(roundMatches.length, idx + 1);
+    roundMatches.forEach(match => {
+      match.label = roundLabel;
+    });
+  });
+
+  return matches;
+}
+
+function generateRoundRobinPayload(teams) {
+  // Match the requested 4-team layout exactly:
+  // R1: 1v2, 3v4
+  // R2: 1v3, 2v4
+  // R3: 1v4, 2v3
+  if (teams.length === 4) {
+    const [t1, t2, t3, t4] = teams;
+    return [
+      {
+        id: 1,
+        round: 1,
+        label: 'Round 1',
+        team1: t1,
+        team2: t2,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      },
+      {
+        id: 2,
+        round: 1,
+        label: 'Round 1',
+        team1: t3,
+        team2: t4,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      },
+      {
+        id: 3,
+        round: 2,
+        label: 'Round 2',
+        team1: t1,
+        team2: t3,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      },
+      {
+        id: 4,
+        round: 2,
+        label: 'Round 2',
+        team1: t2,
+        team2: t4,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      },
+      {
+        id: 5,
+        round: 3,
+        label: 'Round 3',
+        team1: t1,
+        team2: t4,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      },
+      {
+        id: 6,
+        round: 3,
+        label: 'Round 3',
+        team1: t2,
+        team2: t3,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      }
+    ];
+  }
+
+  // Generic round-robin fallback (circle method)
+  const pool = teams.map(t => ({ ...t }));
+  if (pool.length % 2 === 1) {
+    pool.push({ id: null, team_name: 'BYE', name: 'BYE', __bye: true });
+  }
+
+  const matches = [];
+  let matchId = 1;
+  let rotation = pool.slice();
+  const roundsCount = rotation.length - 1;
+
+  for (let r = 1; r <= roundsCount; r += 1) {
+    for (let i = 0; i < rotation.length / 2; i += 1) {
+      const a = rotation[i];
+      const b = rotation[rotation.length - 1 - i];
+      if (a?.__bye || b?.__bye) continue;
+
+      matches.push({
+        id: matchId++,
+        round: r,
+        label: `Round ${r}`,
+        team1: a,
+        team2: b,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null
+      });
+    }
+
+    const fixed = rotation[0];
+    const rest = rotation.slice(1);
+    rest.unshift(rest.pop());
+    rotation = [fixed, ...rest];
+  }
+
+  return matches;
+}
+
+function buildSeededUpperRoundForFourTeams(teams) {
+  if (teams.length !== 4) {
+    return buildAutoPairings(teams);
+  }
+
+  return [
+    { teamA: teams[0], teamB: teams[3] }, // 1 vs 4
+    { teamA: teams[2], teamB: teams[1] }  // 3 vs 2
+  ];
+}
+
+function generateDoubleEliminationPayload(teams) {
+  const pairings = buildAutoPairings(teams);
+  const upper = generateSingleEliminationPayload(pairings).map(m => ({
+    ...m,
+    bracket_stage: 'upper',
+    loser_next_match_id: null,
+    loser_next_slot: null
+  }));
+
+  const upperRounds = {};
+  upper.forEach(m => {
+    const r = Number(m.round || 1);
+    if (!upperRounds[r]) upperRounds[r] = [];
+    upperRounds[r].push(m);
+  });
+
+  const upperRoundNos = Object.keys(upperRounds).map(Number).sort((a, b) => a - b);
+  upperRoundNos.forEach(r => {
+    const label = eliminationRoundLabelByMatchCount(upperRounds[r].length, r);
+    upperRounds[r].forEach(m => {
+      m.label = `Winners ${label}`;
+    });
+  });
+
+  let nextId = upper.reduce((max, m) => Math.max(max, Number(m.id || 0)), 0) + 1;
+  const lower = [];
+  let lowerRoundNo = 1;
+  let lowerLabelNo = 1;
+
+  function createLowerRound(matchCount) {
+    const roundMatches = [];
+    for (let i = 0; i < matchCount; i += 1) {
+      const m = {
+        id: nextId++,
+        round: lowerRoundNo,
+        label: `Losers Round ${lowerLabelNo}`,
+        bracket_stage: 'lower',
+        team1: null,
+        team2: null,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: '',
+        next_match_id: null,
+        next_slot: null,
+        loser_next_match_id: null,
+        loser_next_slot: null
+      };
+      lower.push(m);
+      roundMatches.push(m);
+    }
+    lowerRoundNo += 1;
+    lowerLabelNo += 1;
+    return roundMatches;
+  }
+
+  function setWinnerPath(sourceMatch, targetMatch, slot) {
+    if (!sourceMatch || !targetMatch) return;
+    sourceMatch.next_match_id = targetMatch.id;
+    sourceMatch.next_slot = slot;
+  }
+
+  function setLoserPath(sourceMatch, targetMatch, slot) {
+    if (!sourceMatch || !targetMatch) return;
+    sourceMatch.loser_next_match_id = targetMatch.id;
+    sourceMatch.loser_next_slot = slot;
+  }
+
+  const firstUpper = upperRounds[1] || [];
+  let lowerWinnersFeed = [];
+
+  if (firstUpper.length) {
+    const l1Count = Math.max(1, Math.ceil(firstUpper.length / 2));
+    const l1 = createLowerRound(l1Count);
+    firstUpper.forEach((um, i) => {
+      const target = l1[Math.floor(i / 2)];
+      const slot = (i % 2 === 0) ? 'team1' : 'team2';
+      setLoserPath(um, target, slot);
+    });
+    lowerWinnersFeed = l1.slice();
+  }
+
+  for (let wr = 2; wr <= upperRoundNos.length; wr += 1) {
+    const winnersRound = upperRounds[wr] || [];
+    if (!winnersRound.length) continue;
+
+    while (lowerWinnersFeed.length > winnersRound.length) {
+      const prepCount = Math.ceil(lowerWinnersFeed.length / 2);
+      const prepRound = createLowerRound(prepCount);
+      lowerWinnersFeed.forEach((src, i) => {
+        const target = prepRound[Math.floor(i / 2)];
+        const slot = (i % 2 === 0) ? 'team1' : 'team2';
+        setWinnerPath(src, target, slot);
+      });
+      lowerWinnersFeed = prepRound.slice();
+    }
+
+    const mergeRound = createLowerRound(winnersRound.length);
+    winnersRound.forEach((um, i) => {
+      const target = mergeRound[i];
+      if (lowerWinnersFeed[i]) setWinnerPath(lowerWinnersFeed[i], target, 'team1');
+      setLoserPath(um, target, 'team2');
+    });
+    lowerWinnersFeed = mergeRound.slice();
+  }
+
+  while (lowerWinnersFeed.length > 1) {
+    const prepCount = Math.ceil(lowerWinnersFeed.length / 2);
+    const prepRound = createLowerRound(prepCount);
+    lowerWinnersFeed.forEach((src, i) => {
+      const target = prepRound[Math.floor(i / 2)];
+      const slot = (i % 2 === 0) ? 'team1' : 'team2';
+      setWinnerPath(src, target, slot);
+    });
+    lowerWinnersFeed = prepRound.slice();
+  }
+
+  const finalRoundNo = (upperRoundNos.length || 1) + 1;
+  const grandFinal = {
+    id: nextId++,
+    round: finalRoundNo,
+    label: 'Grand Final',
+    bracket_stage: 'final',
+    team1: null,
+    team2: null,
+    score1: 0,
+    score2: 0,
+    winner_team_id: null,
+    status: 'Pending',
+    date: '',
+    time: '',
+    location: '',
+    description: 'Winners Champion vs Losers Champion',
+    next_match_id: null,
+    next_slot: null,
+    loser_next_match_id: null,
+    loser_next_slot: null
+  };
+
+  const winnersFinal = upperRounds[upperRoundNos[upperRoundNos.length - 1]]?.[0] || null;
+  if (winnersFinal) setWinnerPath(winnersFinal, grandFinal, 'team1');
+  if (lowerWinnersFeed[0]) setWinnerPath(lowerWinnersFeed[0], grandFinal, 'team2');
+
+  // Improve lower bracket round labels for terminal rounds
+  const lowerRoundMap = {};
+  lower.forEach(m => {
+    const k = m.round;
+    if (!lowerRoundMap[k]) lowerRoundMap[k] = [];
+    lowerRoundMap[k].push(m);
+  });
+  const lowerRoundKeys = Object.keys(lowerRoundMap).map(Number).sort((a, b) => a - b);
+  if (lowerRoundKeys.length >= 1) {
+    lowerRoundMap[lowerRoundKeys[lowerRoundKeys.length - 1]].forEach(m => { m.label = 'Losers Final'; });
+  }
+  if (lowerRoundKeys.length >= 2) {
+    const semiKey = lowerRoundKeys[lowerRoundKeys.length - 2];
+    if (lowerRoundMap[semiKey].length === 1) {
+      lowerRoundMap[semiKey].forEach(m => { m.label = 'Losers Semifinals'; });
+    }
+  }
+
+  return [...upper, ...lower, grandFinal];
+}
+
+async function generateTournamentBracket() {
+  const event = bracketSetupContext.event;
+  const teams = bracketSetupContext.teams || [];
+  const existingBracketId = Number(bracketSetupContext.existingBracketId || 0);
+  const existingParticipantCount = Number(bracketSetupContext.existingParticipantCount || 0);
+  const existingTournamentType = String(bracketSetupContext.existingTournamentType || '');
+  const existingThirdPlace = Number(bracketSetupContext.existingThirdPlace ? 1 : 0) === 1;
+  if (!event) {
+    adminToast('Event context is missing.', 'error');
+    return;
+  }
+
+  const currentTournamentType = String(event.tournament_type || 'single_elimination');
+  const currentThirdPlace = (event.has_third_place_match == null ? true : Number(event.has_third_place_match) === 1);
+
+  // If bracket already exists and still matches current approved team count,
+  // open it instead of regenerating.
+  if (
+    existingBracketId > 0 &&
+    existingParticipantCount === Number(teams.length) &&
+    existingTournamentType === currentTournamentType &&
+    existingThirdPlace === currentThirdPlace
+  ) {
+    closeModal('eventBracketingModal');
+    window.location.href = `bracket-landing.html?event_id=${Number(event.id)}&bracket_id=${existingBracketId}`;
+    return;
+  }
+
+  if (teams.length < 3) {
+    adminToast('Minimum of 3 approved teams is required.', 'error');
+    return;
+  }
+
+  const type = currentTournamentType;
+  const thirdPlace = currentThirdPlace;
+
+  let matches = [];
+  try {
+    if (type === 'round_robin') {
+      matches = generateRoundRobinPayload(teams);
+    } else if (type === 'double_elimination') {
+      matches = generateDoubleEliminationPayload(teams);
+    } else {
+      const pairings = buildEmptyPairingsByTeamCount(teams.length);
+      matches = generateSingleEliminationPayload(pairings);
+    }
+  } catch (e) {
+    adminToast(e.message || 'Invalid bracket setup.', 'error');
+    return;
+  }
+
+  const payload = {
+    id: `bracket_${Date.now()}`,
+    event_id: Number(event.id),
+    event_title: event.title || '',
+    category: event.category || '',
+    tournament_type: type,
+    third_place_match: thirdPlace,
+    teams: teams.map(t => ({ id: Number(t.id), name: t.team_name || 'Unnamed Team' })),
+    matches,
+    created_at: new Date().toISOString()
+  };
+
+  // Save to localStorage as fallback / cache
+  try {
+    localStorage.setItem('otm_active_bracket', JSON.stringify(payload));
+  } catch (e) { /* non-fatal */ }
+
+  // Persist to database
+  const btn = document.getElementById('generateBracketBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  let bracketId = null;
+  try {
+    const loggedUser = JSON.parse(sessionStorage.getItem('otm_user') || localStorage.getItem('otm_user') || '{}');
+    const res = await fetch('../api/brackets/save.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id:         Number(event.id),
+        tournament_type:  type,
+        third_place_match: thirdPlace,
+        category:         event.category || '',
+        created_by:       loggedUser.id || null,
+        teams:            payload.teams,
+        matches:          payload.matches
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Save failed.');
+    bracketId = json.bracket_id;
+
+    // Update payload with real DB ids
+    payload.bracket_id = bracketId;
+    if (json.id_map) {
+      payload.matches.forEach(m => {
+        const dbId = json.id_map[m.id];
+        if (dbId) m.db_id = dbId;
+      });
+    }
+    localStorage.setItem('otm_active_bracket', JSON.stringify(payload));
+  } catch (err) {
+    adminToast('Failed to save bracket to database: ' + (err.message || err), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Bracket'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Create Bracket'; }
+  closeModal('eventBracketingModal');
+  window.location.href = `bracket-landing.html?event_id=${Number(event.id)}&bracket_id=${bracketId}`;
+}
+
+function initInlineBracketLanding() {
+  const tabInfo = document.getElementById('inlineTabInfo');
+  const tabScores = document.getElementById('inlineTabScores');
+  const saveInfo = document.getElementById('inlineSaveMatchInfoBtn');
+  const clearInfo = document.getElementById('inlineClearMatchInfoBtn');
+  const submitScores = document.getElementById('inlineSubmitScoresBtn');
+  const resetScores = document.getElementById('inlineResetScoresBtn');
+  const closeBracketPanelBtn = document.getElementById('inlineCloseBracketPanelBtn');
+  const closeMatchPanelBtn = document.getElementById('inlineCloseMatchPanelBtn');
+
+  if (tabInfo) tabInfo.addEventListener('click', () => setInlineMatchTab('info'));
+  if (tabScores) tabScores.addEventListener('click', () => setInlineMatchTab('scores'));
+  if (saveInfo) saveInfo.addEventListener('click', saveInlineMatchInfo);
+  if (clearInfo) clearInfo.addEventListener('click', clearInlineMatchInfo);
+  if (submitScores) submitScores.addEventListener('click', submitInlineMatchScores);
+  if (resetScores) resetScores.addEventListener('click', resetInlineMatchScores);
+  if (closeBracketPanelBtn) closeBracketPanelBtn.addEventListener('click', closeInlineBracketLanding);
+  if (closeMatchPanelBtn) closeMatchPanelBtn.addEventListener('click', closeInlineMatchPanel);
+
+  const stage = document.getElementById('inlineBracketStage');
+  if (stage) {
+    stage.addEventListener('click', (e) => {
+      const card = e.target.closest('[data-inline-match-id]');
+      if (!card) return;
+      openInlineMatchModal(Number(card.getAttribute('data-inline-match-id')));
+    });
+  }
+}
+
+function openInlineBracketLanding(payload) {
+  inlineBracketData = payload;
+  inlineBracketSelectedMatchId = null;
+
+  const title = document.getElementById('inlineBracketTitle');
+  const chipType = document.getElementById('inlineChipType');
+  const chipCategory = document.getElementById('inlineChipCategory');
+  const chipThird = document.getElementById('inlineChipThird');
+  const chipTeams = document.getElementById('inlineChipTeams');
+
+  if (title) title.textContent = `Bracket - ${payload.event_title || 'Event'}`;
+  if (chipType) chipType.textContent = `Type: ${String(payload.tournament_type || '-').replace(/_/g, ' ')}`;
+  if (chipCategory) chipCategory.textContent = `Category: ${payload.category || '-'}`;
+  if (chipThird) chipThird.textContent = `3rd Place Match: ${payload.third_place_match ? 'Yes' : 'No'}`;
+  if (chipTeams) chipTeams.textContent = `Teams: ${(payload.teams || []).length || 0}`;
+
+  renderInlineBracketBoard();
+  const panel = document.getElementById('inlineBracketPanel');
+  if (panel) {
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function closeInlineBracketLanding() {
+  const panel = document.getElementById('inlineBracketPanel');
+  const matchPanel = document.getElementById('inlineMatchEditorPanel');
+  if (matchPanel) matchPanel.style.display = 'none';
+  if (panel) panel.style.display = 'none';
+}
+
+function findInlineMatch(id) {
+  return (inlineBracketData?.matches || []).find((m) => Number(m.id) === Number(id));
+}
+
+function inlineTeamName(team) {
+  return team ? (team.name || 'Team') : 'BYE';
+}
+
+function inlineTeamSeed(team) {
+  if (!team || !Array.isArray(inlineBracketData?.teams)) return '-';
+  const idx = inlineBracketData.teams.findIndex((t) => Number(t.id) === Number(team.id));
+  return idx >= 0 ? idx + 1 : '-';
+}
+
+function inlineMatchWinnerSide(match) {
+  if (!match?.winner_team_id) return 0;
+  if (match.team1 && Number(match.team1.id) === Number(match.winner_team_id)) return 1;
+  if (match.team2 && Number(match.team2.id) === Number(match.winner_team_id)) return 2;
+  return 0;
+}
+
+function assignInlineWinnerToNext(match, winnerTeam) {
+  if (!match || !winnerTeam || !match.next_match_id) return;
+  const next = findInlineMatch(match.next_match_id);
+  if (!next) return;
+  if (match.next_slot === 'team1') next.team1 = winnerTeam;
+  if (match.next_slot === 'team2') next.team2 = winnerTeam;
+}
+
+function autoAdvanceInlineByes() {
+  if (!inlineBracketData?.matches) return;
+  inlineBracketData.matches.forEach((match) => {
+    if (String(match.status) === 'Completed') return;
+    const onlyTeam1 = match.team1 && !match.team2;
+    const onlyTeam2 = !match.team1 && match.team2;
+    if (!onlyTeam1 && !onlyTeam2) return;
+    const winner = onlyTeam1 ? match.team1 : match.team2;
+    match.winner_team_id = winner ? Number(winner.id) : null;
+    match.status = 'Completed';
+    assignInlineWinnerToNext(match, winner);
+  });
+}
+
+function renderInlineEliminationBoard() {
+  const stage = document.getElementById('inlineBracketStage');
+  if (!stage || !inlineBracketData) return;
+
+  const CARD_HEIGHT = 86;
+  const BASE_GAP = 14;
+  const UNIT = CARD_HEIGHT + BASE_GAP;
+
+  const roundsMap = {};
+  (inlineBracketData.matches || []).forEach((m) => {
+    const key = Number(m.round || 1);
+    if (!roundsMap[key]) roundsMap[key] = [];
+    roundsMap[key].push(m);
+  });
+
+  const rounds = Object.keys(roundsMap).map(Number).sort((a, b) => a - b);
+  if (!rounds.length) {
+    stage.innerHTML = '<div class="inline-empty-note">No matches generated yet.</div>';
+    return;
+  }
+
+  stage.innerHTML = '<div class="inline-rounds">' + rounds.map((r, roundIndex) => {
+    const roundMatches = roundsMap[r] || [];
+    const hasConnectors = roundIndex < (rounds.length - 1);
+    const step = UNIT * Math.pow(2, roundIndex);
+    const offset = Math.max(0, (step / 2) - (CARD_HEIGHT / 2));
+
+    let prevBottom = 0;
+    const matchesHtml = roundMatches.map((match, matchIndex) => {
+      const winnerSide = inlineMatchWinnerSide(match);
+      const y = offset + (matchIndex * step);
+      const marginTop = Math.max(0, Math.round(y - prevBottom));
+      prevBottom = y + CARD_HEIGHT;
+
+      return '<div class="inline-match-wrap" style="margin-top:' + marginTop + 'px;--pair-step:' + step + 'px;">' +
+        '<div class="inline-match-card" data-inline-match-id="' + match.id + '">' +
+          '<div class="inline-team-row' + (winnerSide === 1 ? ' winner' : '') + '">' +
+            '<div class="inline-seed-col">' + escapeAdminHTML(String(inlineTeamSeed(match.team1))) + '</div>' +
+            '<div class="inline-team-name">' + escapeAdminHTML(inlineTeamName(match.team1)) + '</div>' +
+            '<div class="inline-team-score">' + Number(match.score1 || 0) + '</div>' +
+          '</div>' +
+          '<div class="inline-team-row' + (winnerSide === 2 ? ' winner' : '') + '">' +
+            '<div class="inline-seed-col">' + escapeAdminHTML(String(inlineTeamSeed(match.team2))) + '</div>' +
+            '<div class="inline-team-name">' + escapeAdminHTML(inlineTeamName(match.team2)) + '</div>' +
+            '<div class="inline-team-score">' + Number(match.score2 || 0) + '</div>' +
+          '</div>' +
+        '</div>' +
+        (hasConnectors && (matchIndex % 2 === 0) ? '<span class="inline-connector-out"></span>' : '') +
+      '</div>';
+    }).join('');
+
+    return '<div class="inline-round' + (hasConnectors ? ' has-connectors' : '') + '">' +
+      '<h3 class="inline-round-title">' + escapeAdminHTML(roundMatches[0]?.label || `Round ${r}`) + '</h3>' +
+      '<div class="inline-round-matches">' + matchesHtml + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+function renderInlineRoundRobinBoard() {
+  const stage = document.getElementById('inlineBracketStage');
+  if (!stage || !inlineBracketData) return;
+
+  const matches = inlineBracketData.matches || [];
+  if (!matches.length) {
+    stage.innerHTML = '<div class="inline-empty-note">No round robin matches generated yet.</div>';
+    return;
+  }
+
+  stage.innerHTML = '<div class="inline-rr-list">' + matches.map((match) => {
+    const winnerSide = inlineMatchWinnerSide(match);
+    const left = escapeAdminHTML(inlineTeamName(match.team1));
+    const right = escapeAdminHTML(inlineTeamName(match.team2));
+    const winner = winnerSide === 1 ? left : (winnerSide === 2 ? right : '-');
+    return '<div class="inline-rr-item" data-inline-match-id="' + match.id + '">' +
+      '<strong>' + left + '</strong> vs <strong>' + right + '</strong>' +
+      ' | Score: ' + Number(match.score1 || 0) + ' - ' + Number(match.score2 || 0) +
+      ' | Winner: ' + winner +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+function renderInlineBracketBoard() {
+  if (!inlineBracketData) return;
+  autoAdvanceInlineByes();
+  if (inlineBracketData.tournament_type === 'round_robin') {
+    renderInlineRoundRobinBoard();
+  } else {
+    renderInlineEliminationBoard();
+  }
+}
+
+function setInlineMatchTab(tab) {
+  const paneInfo = document.getElementById('inlinePaneInfo');
+  const paneScores = document.getElementById('inlinePaneScores');
+  const tabInfo = document.getElementById('inlineTabInfo');
+  const tabScores = document.getElementById('inlineTabScores');
+  if (!paneInfo || !paneScores || !tabInfo || !tabScores) return;
+
+  const isInfo = tab === 'info';
+  paneInfo.style.display = isInfo ? 'block' : 'none';
+  paneScores.style.display = isInfo ? 'none' : 'block';
+  tabInfo.style.background = isInfo ? '#e8eaf6' : '#f0f2f5';
+  tabInfo.style.color = isInfo ? '#1a237e' : '#555';
+  tabScores.style.background = isInfo ? '#f0f2f5' : '#e8eaf6';
+  tabScores.style.color = isInfo ? '#555' : '#1a237e';
+}
+
+function openInlineMatchModal(matchId) {
+  inlineBracketSelectedMatchId = Number(matchId);
+  const match = findInlineMatch(inlineBracketSelectedMatchId);
+  if (!match) return;
+
+  const dateEl = document.getElementById('inlineMatchDate');
+  const timeEl = document.getElementById('inlineMatchTime');
+  const locationEl = document.getElementById('inlineMatchLocation');
+  const descEl = document.getElementById('inlineMatchDescription');
+  const scoreTable = document.getElementById('inlineScoreTable');
+  if (!dateEl || !timeEl || !locationEl || !descEl || !scoreTable) return;
+
+  dateEl.value = match.date || '';
+  timeEl.value = match.time || '';
+  locationEl.value = match.location || '';
+  descEl.value = match.description || '';
+
+  const winnerSide = inlineMatchWinnerSide(match);
+  scoreTable.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr><th>#</th><th>Team</th><th>Winner</th><th>Score</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${escapeAdminHTML(String(inlineTeamSeed(match.team1)))}</td>
+          <td>${escapeAdminHTML(inlineTeamName(match.team1))}</td>
+          <td><input type="radio" name="inlineWinnerPick" value="1" ${winnerSide === 1 ? 'checked' : ''} /></td>
+          <td><input id="inlineScoreInput1" type="number" min="0" value="${Number(match.score1 || 0)}" style="width:90px;" /></td>
+        </tr>
+        <tr>
+          <td>${escapeAdminHTML(String(inlineTeamSeed(match.team2)))}</td>
+          <td>${escapeAdminHTML(inlineTeamName(match.team2))}</td>
+          <td><input type="radio" name="inlineWinnerPick" value="2" ${winnerSide === 2 ? 'checked' : ''} /></td>
+          <td><input id="inlineScoreInput2" type="number" min="0" value="${Number(match.score2 || 0)}" style="width:90px;" /></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+
+  setInlineMatchTab('info');
+  const matchPanel = document.getElementById('inlineMatchEditorPanel');
+  if (matchPanel) {
+    matchPanel.style.display = 'block';
+    matchPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function closeInlineMatchPanel() {
+  const matchPanel = document.getElementById('inlineMatchEditorPanel');
+  inlineBracketSelectedMatchId = null;
+  if (matchPanel) matchPanel.style.display = 'none';
+}
+
+function saveInlineMatchInfo() {
+  const match = findInlineMatch(inlineBracketSelectedMatchId);
+  if (!match) return;
+  match.date = document.getElementById('inlineMatchDate')?.value || '';
+  match.time = document.getElementById('inlineMatchTime')?.value || '';
+  match.location = document.getElementById('inlineMatchLocation')?.value || '';
+  match.description = document.getElementById('inlineMatchDescription')?.value || '';
+  localStorage.setItem('otm_active_bracket', JSON.stringify(inlineBracketData));
+  adminToast('Match info saved.');
+}
+
+function clearInlineMatchInfo() {
+  const match = findInlineMatch(inlineBracketSelectedMatchId);
+  if (!match) return;
+  match.date = '';
+  match.time = '';
+  match.location = '';
+  match.description = '';
+  localStorage.setItem('otm_active_bracket', JSON.stringify(inlineBracketData));
+  openInlineMatchModal(match.id);
+}
+
+function submitInlineMatchScores() {
+  const match = findInlineMatch(inlineBracketSelectedMatchId);
+  if (!match) return;
+
+  const score1 = Number(document.getElementById('inlineScoreInput1')?.value || 0);
+  const score2 = Number(document.getElementById('inlineScoreInput2')?.value || 0);
+  const winnerPick = document.querySelector('input[name="inlineWinnerPick"]:checked')?.value || '';
+
+  if (!match.team1 && !match.team2) {
+    adminToast('No teams in this match yet.', 'error');
+    return;
+  }
+
+  let winner = null;
+  if (winnerPick === '1' && match.team1) winner = match.team1;
+  else if (winnerPick === '2' && match.team2) winner = match.team2;
+  else {
+    if (score1 === score2) {
+      adminToast('Scores are tied. Please choose a winner.', 'error');
+      return;
+    }
+    winner = score1 > score2 ? match.team1 : match.team2;
+  }
+
+  if (!winner) {
+    adminToast('Unable to determine winner.', 'error');
+    return;
+  }
+
+  match.score1 = score1;
+  match.score2 = score2;
+  match.winner_team_id = Number(winner.id);
+  match.status = 'Completed';
+  assignInlineWinnerToNext(match, winner);
+
+  localStorage.setItem('otm_active_bracket', JSON.stringify(inlineBracketData));
+  renderInlineBracketBoard();
+  openInlineMatchModal(match.id);
+}
+
+function resetInlineMatchScores() {
+  const match = findInlineMatch(inlineBracketSelectedMatchId);
+  if (!match) return;
+  match.score1 = 0;
+  match.score2 = 0;
+  match.winner_team_id = null;
+  match.status = 'Pending';
+  localStorage.setItem('otm_active_bracket', JSON.stringify(inlineBracketData));
+  renderInlineBracketBoard();
+  openInlineMatchModal(match.id);
+}
+
 function clearEventForm() {
   ['eventId', 'eventTitle', 'eventCategory', 'eventStartDate',
    'eventEndDate', 'eventLocation', 'eventTeams', 'eventDesc'].forEach(i => {
@@ -540,6 +1631,10 @@ function clearEventForm() {
   if (sport)  sport.value  = '';
   const status = document.getElementById('eventStatus');
   if (status) status.value = 'Upcoming';
+  const tournamentType = document.getElementById('eventTournamentType');
+  if (tournamentType) tournamentType.value = 'single_elimination';
+  const thirdPlaceDefault = document.querySelector('input[name="eventThirdPlace"][value="yes"]');
+  if (thirdPlaceDefault) thirdPlaceDefault.checked = true;
   const titleEl = document.getElementById('eventModalTitle');
   if (titleEl) titleEl.textContent = 'Add New Event';
   // Hide teams field for new events
@@ -1596,7 +2691,6 @@ async function renderRegistrationsTable(session, filter = '') {
   tbody.innerHTML = rows.map((row, index) => {
     const canReview =
       isAdministratorSession(session) &&
-      registrationRole(row.submitted_by_role) === 'representative' &&
       String(row.status || '').toLowerCase() === 'pending';
 
     return `
@@ -1998,11 +3092,6 @@ window.updateRegistrationStatus = async function(id, status) {
     row = await fetchRegistrationById(id);
   } catch (err) {
     adminToast(err.message || 'Registration request not found.', 'error');
-    return;
-  }
-
-  if (registrationRole(row.submitted_by_role) !== 'representative') {
-    adminToast('Only representative submissions can be approved or rejected.', 'error');
     return;
   }
 
