@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Event Bracket - OTM Admin</title>
+  <title>Event Bracket - CvSU Bacoor Sports Hub Admin</title>
   <link rel="stylesheet" href="../css/style.css" />
   <link rel="stylesheet" href="../css/admin.css" />
   <link rel="stylesheet" href="../css/bracket.css" />
@@ -15,7 +15,8 @@
         <h1 class="bracket-title" id="landingTitle">Event Bracket</h1>
         <div class="bracket-sub" id="landingSub">Manage matches, schedules, and scores.</div>
       </div>
-      <div>
+      <div class="bracket-top-actions">
+        <button class="theme-toggle-btn" id="themeToggleBtn" type="button" aria-pressed="false">Light Mode</button>
         <button class="btn" type="button" onclick="window.location.href='events.html'" style="background:#dce1ef;color:#222;">Back To Events</button>
       </div>
     </div>
@@ -26,6 +27,34 @@
       <span class="bracket-chip" id="chipThird">3rd Place Match: -</span>
       <span class="bracket-chip" id="chipTeams">Teams: 0</span>
     </div>
+
+    <section class="rr-standings" id="roundRobinStandingsSection" style="display:none;">
+      <div class="rr-standings-head">
+        <h2>Live Standings</h2>
+        <span id="rrStandingsMeta">Based on completed matches</span>
+      </div>
+      <div class="rr-standings-table-wrap">
+        <table class="rr-standings-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team</th>
+              <th>P</th>
+              <th>W</th>
+              <th>L</th>
+              <th>D</th>
+              <th>PF</th>
+              <th>PA</th>
+              <th>Diff</th>
+              <th>Pts</th>
+            </tr>
+          </thead>
+          <tbody id="rrStandingsBody">
+            <tr><td colspan="10">No standings available yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
     <div class="bracket-stage" id="bracketStage"></div>
   </div>

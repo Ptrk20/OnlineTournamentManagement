@@ -1,5 +1,6 @@
 (function () {
   const storageKey = 'otm_active_bracket';
+  const themeStorageKey = 'otm_bracket_theme';
   let bracket = null;
   let selectedMatchId = null;
 
@@ -28,6 +29,24 @@
     }
   }
 
+  async function apiUpdateBracketTheme(mode) {
+    try {
+      const res = await fetch(apiBase() + '/brackets/update_theme.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ui_theme: mode,
+          bracket_id: bracket?.bracket_id ? Number(bracket.bracket_id) : null,
+          event_id: bracket?.event_id ? Number(bracket.event_id) : null
+        })
+      });
+      const json = await res.json();
+      if (!json.success) console.warn('Theme update failed:', json.message);
+    } catch (err) {
+      console.warn('apiUpdateBracketTheme error:', err);
+    }
+  }
+
   function dbIdForMatch(match) {
     // Prefer db_id set during bracket creation, else fall back to match.id if
     // the bracket was loaded from DB (ids are already DB ids).
@@ -43,6 +62,10 @@
   const chipCategory = document.getElementById('chipCategory');
   const chipThird    = document.getElementById('chipThird');
   const chipTeams    = document.getElementById('chipTeams');
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const rrStandingsSection = document.getElementById('roundRobinStandingsSection');
+  const rrStandingsBody = document.getElementById('rrStandingsBody');
+  const rrStandingsMeta = document.getElementById('rrStandingsMeta');
 
   function esc(v) {
     return String(v || '')
@@ -51,6 +74,31 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function applyTheme(mode) {
+    const useLight = mode === 'light';
+    document.body.classList.toggle('light-mode', useLight);
+    if (themeToggleBtn) {
+      themeToggleBtn.textContent = useLight ? 'Dark Mode' : 'Light Mode';
+      themeToggleBtn.setAttribute('aria-pressed', String(useLight));
+    }
+  }
+
+  function loadTheme() {
+    const saved = localStorage.getItem(themeStorageKey);
+    applyTheme(saved === 'light' ? 'light' : 'dark');
+  }
+
+  async function toggleTheme() {
+    const next = document.body.classList.contains('light-mode') ? 'dark' : 'light';
+    localStorage.setItem(themeStorageKey, next);
+    applyTheme(next);
+    if (bracket) {
+      bracket.ui_theme = next;
+      saveBracket();
+      await apiUpdateBracketTheme(next);
+    }
   }
 
   async function loadBracket() {
@@ -70,6 +118,7 @@
             category:          d.category || '',
             tournament_type:   d.tournament_type,
             third_place_match: d.has_third_place_match,
+            ui_theme:          d.ui_theme || 'dark',
             teams:             d.teams,
             matches:           d.matches,
           };
@@ -192,6 +241,22 @@
     renderTeamSelect(team2Select, team2Options, match.team2 ? Number(match.team2.id) : null);
   }
 
+  function hasSavedMatchInfo(match) {
+    if (!match) return false;
+    return Boolean(
+      String(match.date || '').trim() ||
+      String(match.time || '').trim() ||
+      String(match.location || '').trim() ||
+      String(match.description || '').trim()
+    );
+  }
+
+  function defaultTabForMatch(match) {
+    if (!match.team1 || !match.team2) return 'teams';
+    if (hasSavedMatchInfo(match)) return 'scores';
+    return 'info';
+  }
+
   function autoAdvanceByes() {
     let changed = false;
     bracket.matches.forEach(match => {
@@ -236,7 +301,12 @@
     const UNIT        = CARD_HEIGHT + BASE_GAP;
 
     const roundsMap = {};
+    const thirdPlaceMatches = [];
     bracket.matches.forEach(m => {
+      if (m.bracket_stage === 'third_place') {
+        thirdPlaceMatches.push(m);
+        return;
+      }
       const key = Number(m.round || 1);
       if (!roundsMap[key]) roundsMap[key] = [];
       roundsMap[key].push(m);
@@ -279,10 +349,31 @@
       }).join('');
 
       const displayRoundLabel = eliminationRoundLabelByMatchCount(roundMatches.length, r);
+      const isLastRound = roundIndex === (rounds.length - 1);
+      const thirdPlaceHtml = (isLastRound && thirdPlaceMatches.length)
+        ? thirdPlaceMatches.map(tp => {
+            const winnerSide = matchWinnerSide(tp);
+            return '<div class="round-subtitle" style="margin-top:' + BASE_GAP + 'px;">3rd Place Match</div>' +
+              '<div class="match-wrap" style="padding-right:52px;">' +
+              '<div class="match-card" data-match-id="' + tp.id + '">' +
+                '<div class="team-row' + (winnerSide === 1 ? ' winner' : '') + '">' +
+                  '<div class="seed-col">' + esc(teamSeed(tp.team1)) + '</div>' +
+                  '<div class="team-name">' + esc(teamName(tp.team1)) + '</div>' +
+                  '<div class="team-score">' + (Number(tp.score1 || 0)) + '</div>' +
+                '</div>' +
+                '<div class="team-row' + (winnerSide === 2 ? ' winner' : '') + '">' +
+                  '<div class="seed-col">' + esc(teamSeed(tp.team2)) + '</div>' +
+                  '<div class="team-name">' + esc(teamName(tp.team2)) + '</div>' +
+                  '<div class="team-score">' + (Number(tp.score2 || 0)) + '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+          }).join('')
+        : '';
       return '<div class="round' + (hasConnectors ? ' has-connectors' : '') + '">' +
         '<h3 class="round-title">' + esc(displayRoundLabel) + '</h3>' +
         '<div class="round-matches">' +
-        matchHtml +
+        matchHtml + thirdPlaceHtml +
         '</div>' +
       '</div>';
     }).join('') + '</div>';
@@ -327,6 +418,115 @@
         '<div class="round-matches">' + cards + '</div>' +
       '</div>';
     }).join('') + '</div>';
+  }
+
+  function computeRoundRobinStandings() {
+    const teams = Array.isArray(bracket?.teams) ? bracket.teams : [];
+    const rows = teams.map((team) => ({
+      id: Number(team.id),
+      name: String(team.name || 'Team'),
+      played: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      pf: 0,
+      pa: 0,
+      diff: 0,
+      points: 0
+    }));
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const matches = (bracket?.matches || []).filter((m) => String(m.bracket_stage || '') === 'round_robin' || String(bracket?.tournament_type || '') === 'round_robin');
+
+    let countedMatches = 0;
+
+    matches.forEach((match) => {
+      const t1 = match.team1 && match.team1.id != null ? byId.get(Number(match.team1.id)) : null;
+      const t2 = match.team2 && match.team2.id != null ? byId.get(Number(match.team2.id)) : null;
+      if (!t1 || !t2) return;
+
+      const score1 = Number(match.score1 || 0);
+      const score2 = Number(match.score2 || 0);
+      const winnerId = match.winner_team_id != null ? Number(match.winner_team_id) : null;
+      const isComplete = String(match.status || '').toLowerCase() === 'completed' || winnerId !== null;
+      if (!isComplete) return;
+
+      countedMatches += 1;
+
+      t1.played += 1;
+      t2.played += 1;
+      t1.pf += score1;
+      t1.pa += score2;
+      t2.pf += score2;
+      t2.pa += score1;
+
+      if (winnerId && winnerId === t1.id) {
+        t1.wins += 1;
+        t2.losses += 1;
+        t1.points += 2;
+      } else if (winnerId && winnerId === t2.id) {
+        t2.wins += 1;
+        t1.losses += 1;
+        t2.points += 2;
+      } else {
+        t1.draws += 1;
+        t2.draws += 1;
+        t1.points += 1;
+        t2.points += 1;
+      }
+    });
+
+    rows.forEach((r) => {
+      r.diff = r.pf - r.pa;
+    });
+
+    rows.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.diff !== a.diff) return b.diff - a.diff;
+      if (b.pf !== a.pf) return b.pf - a.pf;
+      return a.name.localeCompare(b.name);
+    });
+
+    return { rows, countedMatches };
+  }
+
+  function renderRoundRobinStandings() {
+    if (!rrStandingsSection || !rrStandingsBody || !rrStandingsMeta) return;
+
+    if (String(bracket?.tournament_type || '') !== 'round_robin') {
+      rrStandingsSection.style.display = 'none';
+      return;
+    }
+
+    rrStandingsSection.style.display = 'block';
+
+    const standings = computeRoundRobinStandings();
+    const rows = standings.rows || [];
+    rrStandingsMeta.textContent = 'Based on completed matches: ' + Number(standings.countedMatches || 0);
+
+    if (!rows.length) {
+      rrStandingsBody.innerHTML = '<tr><td colspan="10">No standings available yet.</td></tr>';
+      return;
+    }
+
+    const leaderPoints = Number(rows[0].points || 0);
+    rrStandingsBody.innerHTML = rows.map((row, idx) => {
+      const isLeading = row.points === leaderPoints;
+      const diffLabel = row.diff > 0 ? ('+' + row.diff) : String(row.diff);
+      return '<tr' + (isLeading ? ' class="rr-leading"' : '') + '>' +
+        '<td class="rr-rank">' + (idx + 1) + '</td>' +
+        '<td>' + esc(row.name) + '</td>' +
+        '<td>' + row.played + '</td>' +
+        '<td>' + row.wins + '</td>' +
+        '<td>' + row.losses + '</td>' +
+        '<td>' + row.draws + '</td>' +
+        '<td>' + row.pf + '</td>' +
+        '<td>' + row.pa + '</td>' +
+        '<td>' + diffLabel + '</td>' +
+        '<td class="rr-points">' + row.points + '</td>' +
+      '</tr>';
+    }).join('');
   }
 
   function renderDoubleEliminationBoard() {
@@ -473,6 +673,7 @@
     } else {
       renderEliminationBoard();
     }
+    renderRoundRobinStandings();
   }
 
   function openMatchModal(matchId) {
@@ -508,8 +709,7 @@
         '<div class="score-cell center"><input class="score-input" id="scoreInput2" type="number" min="0" value="' + Number(match.score2 || 0) + '" /></div>' +
       '</div>';
 
-    if (!match.team1 || !match.team2) setActiveTab('teams');
-    else setActiveTab('info');
+    setActiveTab(defaultTabForMatch(match));
 
     modalEl.classList.add('open');
   }
@@ -576,7 +776,10 @@
       location:          match.location    || null,
       match_description: match.description || null
     });
-    alert('Match info saved.');
+    if (typeof adminToast === 'function') adminToast('Match info saved.');
+    else alert('Match info saved.');
+    openMatchModal(match.id);
+    setActiveTab('scores');
   }
 
   async function clearMatchInfo() {
@@ -626,11 +829,9 @@
     }
 
     assignWinnerToNext(match, winner);
-    // In double elimination, route the loser to the losers bracket
-    if (bracket.tournament_type === 'double_elimination') {
-      const loser = (winner === match.team1) ? match.team2 : match.team1;
-      if (loser) assignLoserToNext(match, loser);
-    }
+    // Route loser if this match has a loser path (double elimination or 3rd-place feed)
+    const loser = (winner === match.team1) ? match.team2 : match.team1;
+    if (loser && match.loser_next_match_id) assignLoserToNext(match, loser);
     saveBracket();
     await apiUpdateMatch({
       id:                     dbIdForMatch(match),
@@ -641,6 +842,7 @@
     });
     renderBoard();
     openMatchModal(match.id);
+    setActiveTab('scores');
   }
 
   async function resetScores() {
@@ -674,6 +876,7 @@
 
   // ── Bootstrap: load bracket then wire events ─────────────────────────
   (async function init() {
+    loadTheme();
     stageEl.innerHTML = '<div class="empty-note">Loading bracket&hellip;</div>';
     bracket = await loadBracket();
     if (!bracket) {
@@ -687,6 +890,11 @@
     chipCategory.textContent = 'Category: '        + (bracket.category || '-');
     chipThird.textContent    = '3rd Place Match: ' + (bracket.third_place_match ? 'Yes' : 'No');
     chipTeams.textContent    = 'Teams: '           + ((bracket.teams || []).length || 0);
+
+    if (bracket.ui_theme && (bracket.ui_theme === 'light' || bracket.ui_theme === 'dark')) {
+      localStorage.setItem(themeStorageKey, bracket.ui_theme);
+      applyTheme(bracket.ui_theme);
+    }
 
     renderBoard();
 
@@ -712,5 +920,6 @@
     document.getElementById('saveMatchTeamsBtn').addEventListener('click', saveMatchTeams);
     document.getElementById('submitScoresBtn').addEventListener('click',   submitScores);
     document.getElementById('resetScoresBtn').addEventListener('click',    resetScores);
+    if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
   })(); // end init
 })();

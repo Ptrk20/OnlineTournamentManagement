@@ -11,7 +11,8 @@
  *   team1_registration_id, team2_registration_id,
  *   team1_score, team2_score,
  *   winner_registration_id, match_status,
- *   schedule_date, schedule_time, location, match_description
+ *   schedule_date, schedule_time,
+ *   location, match_description
  *
  * When a winner is recorded this endpoint also propagates the winner to the
  * next_match_id row's appropriate slot (team1 / team2), mirroring the
@@ -46,6 +47,17 @@ function matches_error(int $code, string $msg): void {
 // ── Require match id ──────────────────────────────────────────────────────
 $matchId = intval($input['id'] ?? 0);
 if ($matchId <= 0) matches_error(400, 'Match id is required.');
+
+$allowedStatuses = ['Pending', 'Scheduled', 'Ongoing', 'Completed'];
+$statusCol = $conn->query("SHOW COLUMNS FROM tournament_matches LIKE 'match_status'");
+if ($statusCol && $statusCol->num_rows > 0) {
+    $row = $statusCol->fetch_assoc();
+    $type = (string)($row['Type'] ?? '');
+    if (preg_match_all("/'([^']+)'/", $type, $matchesEnum) && !empty($matchesEnum[1])) {
+        $allowedStatuses = $matchesEnum[1];
+    }
+}
+if ($statusCol instanceof mysqli_result) $statusCol->free();
 
 // ── Load current match ────────────────────────────────────────────────────
 $cur = $conn->prepare(
@@ -93,11 +105,15 @@ if (array_key_exists('winner_registration_id', $input)) {
     $params[] = $v;
     $types   .= 'i';
 }
-$allowedStatuses = ['Pending', 'Scheduled', 'Ongoing', 'Completed'];
 if (array_key_exists('match_status', $input)) {
-    $v = in_array($input['match_status'], $allowedStatuses, true) ? $input['match_status'] : 'Pending';
+    $requested = (string)($input['match_status'] ?? '');
+    if (!in_array($requested, $allowedStatuses, true)) {
+        $requested = in_array('Scheduled', $allowedStatuses, true)
+            ? 'Scheduled'
+            : (in_array('Pending', $allowedStatuses, true) ? 'Pending' : $allowedStatuses[0]);
+    }
     $setClauses[] = 'match_status = ?';
-    $params[] = $v;
+    $params[] = $requested;
     $types   .= 's';
 }
 if (array_key_exists('schedule_date', $input)) {

@@ -196,7 +196,9 @@ const AuthModule = (() => {
 
     const brandName = document.querySelector('.sidebar-brand .brand-text .name');
     if (brandName) {
-      brandName.textContent = isRepresentative(session.role) ? 'OTM Registration' : 'OTM Admin';
+      brandName.textContent = isRepresentative(session.role)
+        ? 'CvSU Bacoor Sports Hub Registration'
+        : 'CvSU Bacoor Sports Hub';
     }
 
     document.querySelectorAll('[data-user-name]').forEach(el => {

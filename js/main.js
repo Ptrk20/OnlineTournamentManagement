@@ -234,47 +234,166 @@ function removeToast(toast) {
 }
 
 /* =============================================
-   7. LOAD PUBLIC EVENTS (from localStorage / API)
+   7. LOAD PUBLIC EVENTS (from API — Current then Upcoming)
    ============================================= */
-function loadPublicEvents() {
+async function loadPublicEvents() {
   const container = document.getElementById('events-list');
   if (!container) return;
 
-  const events = DataStore.getEvents();
-  if (!events.length) {
-    container.innerHTML = '<p class="text-center" style="color:#aaa;padding:30px;">No events available at the moment.</p>';
-    return;
+  try {
+    const res  = await fetch('api/events/read.php');
+    const json = await parsePublicApiJson(res);
+    const all  = (json.success && Array.isArray(json.data)) ? json.data : [];
+
+    // Keep only Ongoing (Current) and Upcoming events
+    const filtered = all.filter(function (ev) {
+      const s = String(ev.status || '').toLowerCase();
+      return s === 'ongoing' || s === 'upcoming';
+    });
+
+    // Sort: Ongoing first, then Upcoming; within each group sort by start date ascending
+    filtered.sort(function (a, b) {
+      const aOngoing = String(a.status || '').toLowerCase() === 'ongoing';
+      const bOngoing = String(b.status || '').toLowerCase() === 'ongoing';
+      if (aOngoing !== bOngoing) return aOngoing ? -1 : 1;
+      const aDate = new Date(a.event_start_date || a.created_at || 0).getTime();
+      const bDate = new Date(b.event_start_date || b.created_at || 0).getTime();
+      return aDate - bDate;
+    });
+
+    if (!filtered.length) {
+      container.innerHTML = '<p class="text-center" style="color:#aaa;padding:30px;">No current or upcoming events at the moment.</p>';
+      return;
+    }
+
+    renderEventsCarousel(container, filtered);
+  } catch (err) {
+    console.error('loadPublicEvents error:', err);
+    container.innerHTML = '<p class="text-center" style="color:#aaa;padding:30px;">Unable to load events.</p>';
+  }
+}
+
+function renderEventsCarousel(container, events) {
+  const slides = events.map(function (ev) {
+    return '<div class="ev-carousel-slide">' + renderEventCard(ev) + '</div>';
+  }).join('');
+
+  const dots = events.map(function (_, i) {
+    return '<button type="button" class="ev-carousel-dot' + (i === 0 ? ' active' : '') +
+           '" data-idx="' + i + '" aria-label="Slide ' + (i + 1) + '"></button>';
+  }).join('');
+
+  container.innerHTML =
+    '<div class="ev-carousel">' +
+      '<div class="ev-carousel-viewport">' +
+        '<div class="ev-carousel-track">' + slides + '</div>' +
+      '</div>' +
+      (events.length > 1
+        ? '<button type="button" class="ev-carousel-nav prev" aria-label="Previous">&#10094;</button>' +
+          '<button type="button" class="ev-carousel-nav next" aria-label="Next">&#10095;</button>'
+        : '') +
+    '</div>' +
+    (events.length > 1 ? '<div class="ev-carousel-dots">' + dots + '</div>' : '');
+
+  var track   = container.querySelector('.ev-carousel-track');
+  var allSlides = container.querySelectorAll('.ev-carousel-slide');
+  var allDots   = container.querySelectorAll('.ev-carousel-dot');
+  var prevBtn   = container.querySelector('.ev-carousel-nav.prev');
+  var nextBtn   = container.querySelector('.ev-carousel-nav.next');
+  var current   = 0;
+  var autoTimer = null;
+
+  function visibleCount() {
+    var w = window.innerWidth;
+    if (w >= 900) return 3;
+    if (w >= 580) return 2;
+    return 1;
   }
 
-  container.innerHTML = events.slice(0, 6).map(ev => renderEventCard(ev)).join('');
+  function maxIndex() {
+    return Math.max(0, allSlides.length - visibleCount());
+  }
+
+  function goTo(idx) {
+    current = Math.max(0, Math.min(idx, maxIndex()));
+    // translateX % is relative to the track's own width.
+    // Each slide = (100 / visibleCount)% of track width, so moving N slides = N*(100/vc)%
+    var pct = (current * 100 / visibleCount()).toFixed(6);
+    track.style.transform = 'translateX(-' + pct + '%)';
+    allDots.forEach(function (dot, i) {
+      dot.classList.toggle('active', i === current);
+    });
+  }
+
+  function startAuto() {
+    clearInterval(autoTimer);
+    if (events.length <= visibleCount()) return;
+    autoTimer = setInterval(function () {
+      goTo(current >= maxIndex() ? 0 : current + 1);
+    }, 5000);
+  }
+
+  if (prevBtn) prevBtn.addEventListener('click', function () { goTo(current - 1); startAuto(); });
+  if (nextBtn) nextBtn.addEventListener('click', function () { goTo(current + 1); startAuto(); });
+
+  allDots.forEach(function (dot) {
+    dot.addEventListener('click', function () {
+      goTo(Number(dot.getAttribute('data-idx')));
+      startAuto();
+    });
+  });
+
+  var carousel = container.querySelector('.ev-carousel');
+  if (carousel) {
+    carousel.addEventListener('mouseenter', function () { clearInterval(autoTimer); });
+    carousel.addEventListener('mouseleave', function () { startAuto(); });
+  }
+
+  window.addEventListener('resize', function () { goTo(current); });
+
+  goTo(0);
+  startAuto();
 }
 
 function renderEventCard(ev) {
-  const d     = new Date(ev.date);
-  const month = d.toLocaleString('default', { month: 'short' }).toUpperCase();
-  const day   = d.getDate();
+  var title    = escapeHTML(ev.title || '—');
+  var sport    = escapeHTML(ev.sport_name || '—');
+  var category = escapeHTML(ev.category || '—');
+  var location = escapeHTML(ev.location || '—');
+  var status   = escapeHTML(ev.status   || '');
+  var statusCls = 'status-' + status.toLowerCase().replace(/\s+/g, '-');
+  if (!['ongoing','upcoming','pending','completed','cancelled'].includes(status.toLowerCase())) {
+    statusCls = 'status-default';
+  }
 
-  return `
-    <div class="event-card reveal">
-      <div class="event-img">
-        🏆
-        <div class="event-date-badge">
-          <span class="month">${month}</span>
-          <span class="day">${day}</span>
-        </div>
-      </div>
-      <div class="event-body">
-        <span class="badge badge-${statusBadge(ev.status)}">${ev.status}</span>
-        <h3>${escapeHTML(ev.title)}</h3>
-        <div class="meta">
-          <span>📍 ${escapeHTML(ev.location)}</span>
-          <span>👥 ${escapeHTML(ev.teams)} Teams</span>
-        </div>
-        <p>${escapeHTML(ev.description.slice(0, 100))}…</p>
-        <a href="events.html#${ev.id}" class="btn btn-dark">View Details</a>
-      </div>
-    </div>
-  `;
+  function fmtDate(str) {
+    if (!str) return '—';
+    var d = new Date(str);
+    if (isNaN(d)) return str;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  var startDate = fmtDate(ev.event_start_date);
+  var endDate   = fmtDate(ev.event_end_date);
+  var href = 'events.html#' + escapeHTML(String(ev.public_id || ev.id || ''));
+
+  return '' +
+    '<div class="ev-event-card">' +
+      '<div class="ev-event-card-header">' +
+        '<h3 class="ev-event-card-title">' + title + '</h3>' +
+        '<span class="ev-event-status ' + statusCls + '">' + status + '</span>' +
+      '</div>' +
+      '<div class="ev-event-card-body">' +
+        '<div class="ev-event-meta-row"><span class="icon">&#9917;</span><span><strong>Sport:</strong> ' + sport + '</span></div>' +
+        '<div class="ev-event-meta-row"><span class="icon">&#127942;</span><span><strong>Category:</strong> ' + category + '</span></div>' +
+        '<div class="ev-event-divider"></div>' +
+        '<div class="ev-event-meta-row"><span class="icon">&#128197;</span><span><strong>Start:</strong> ' + startDate + '</span></div>' +
+        '<div class="ev-event-meta-row"><span class="icon">&#128198;</span><span><strong>End:</strong> ' + endDate + '</span></div>' +
+        '<div class="ev-event-divider"></div>' +
+        '<div class="ev-event-meta-row"><span class="icon">&#128205;</span><span>' + location + '</span></div>' +
+      '</div>' +
+      '<div class="ev-event-card-footer"><a href="' + href + '">View Details &rarr;</a></div>' +
+    '</div>';
 }
 
 /* =============================================
@@ -841,10 +960,12 @@ async function initNewsArticlePage() {
 async function loadPublicAboutPage() {
   const titleEl = document.getElementById('publicAboutTitle');
   const descriptionEl = document.getElementById('publicAboutDescription');
+  const missionEl = document.getElementById('publicMissionContent');
+  const visionEl = document.getElementById('publicVisionContent');
   const imageEl = document.getElementById('publicAboutImage');
   const teamGridEl = document.getElementById('publicTeamGrid');
 
-  if (!titleEl && !descriptionEl && !imageEl && !teamGridEl) return;
+  if (!titleEl && !descriptionEl && !missionEl && !visionEl && !imageEl && !teamGridEl) return;
 
   try {
     const requests = [fetch('api/about/read-content.php')];
@@ -868,20 +989,41 @@ async function loadPublicAboutPage() {
       }
 
       const rawDescription = String(content.description || '').trim();
-      if (descriptionEl && rawDescription) {
-        const paragraphs = rawDescription
+      const rawMission = String(content.mission || '').trim();
+      const rawVision = String(content.vision || '').trim();
+
+      const renderTextBlocks = function (el, rawText, fallbackText) {
+        if (!el) return;
+        const sourceText = rawText || fallbackText;
+        const paragraphs = sourceText
           .split(/\r?\n\s*\r?\n/)
           .map((paragraph) => paragraph.trim())
           .filter(Boolean);
 
         if (paragraphs.length) {
-          descriptionEl.innerHTML = paragraphs
+          el.innerHTML = paragraphs
             .map((paragraph) => `<p>${escapeHTML(paragraph)}</p>`)
             .join('');
         } else {
-          descriptionEl.innerHTML = `<p>${escapeHTML(rawDescription)}</p>`;
+          el.innerHTML = `<p>${escapeHTML(sourceText)}</p>`;
         }
+      };
+
+      if (descriptionEl && rawDescription) {
+        renderTextBlocks(descriptionEl, rawDescription, '');
       }
+
+      renderTextBlocks(
+        missionEl,
+        rawMission,
+        'To provide a reliable, efficient, and user-friendly online platform that empowers sports organizers to plan and manage tournaments with ease while keeping all stakeholders informed through modern communication tools.'
+      );
+
+      renderTextBlocks(
+        visionEl,
+        rawVision,
+        'To make CvSU Bacoor Sports Hub the leading campus sports platform in the Philippines, fostering a vibrant sports community through technology, transparency, and real-time communication.'
+      );
     }
 
     if (teamGridEl && membersJson && membersJson.success && Array.isArray(membersJson.data) && membersJson.data.length) {
@@ -905,11 +1047,13 @@ async function loadPublicContactInfo() {
   const addressEl = document.getElementById('contactAddressDisplay');
   const phoneEl   = document.getElementById('contactPhoneDisplay');
   const emailEl   = document.getElementById('contactEmailDisplay');
+  const facebookEl = document.getElementById('contactFacebookDisplay');
   const footerAddressEls = document.querySelectorAll('[data-footer-contact-address]');
   const footerPhoneEls = document.querySelectorAll('[data-footer-contact-phone]');
   const footerEmailEls = document.querySelectorAll('[data-footer-contact-email]');
+  const footerFacebookEls = document.querySelectorAll('[data-footer-contact-facebook]');
 
-  if (!addressEl && !phoneEl && !emailEl && !footerAddressEls.length && !footerPhoneEls.length && !footerEmailEls.length) return;
+  if (!addressEl && !phoneEl && !emailEl && !facebookEl && !footerAddressEls.length && !footerPhoneEls.length && !footerEmailEls.length && !footerFacebookEls.length) return;
 
   try {
     const res = await fetch('api/contact/read-info.php');
@@ -925,6 +1069,11 @@ async function loadPublicContactInfo() {
       const emailHtml = data.email
         ? escapeHTML(data.email).replace(/\n/g, '<br>')
         : '';
+      const facebookText = String(data.facebook_url || '').trim();
+      const facebookUrl = facebookText
+        ? (/^https?:\/\//i.test(facebookText) ? facebookText : ('https://' + facebookText))
+        : '';
+      const facebookHtml = facebookText ? escapeHTML(facebookText) : '';
 
       if (addressEl && addressHtml) {
         addressEl.innerHTML = addressHtml;
@@ -934,6 +1083,13 @@ async function loadPublicContactInfo() {
       }
       if (emailEl && emailHtml) {
         emailEl.innerHTML = emailHtml;
+      }
+      if (facebookEl) {
+        if (facebookUrl) {
+          facebookEl.innerHTML = '<a href="' + escapeHTML(facebookUrl) + '" target="_blank" rel="noopener noreferrer">' + facebookHtml + '</a>';
+        } else {
+          facebookEl.textContent = 'Not set';
+        }
       }
 
       footerAddressEls.forEach(function (el) {
@@ -953,6 +1109,14 @@ async function loadPublicContactInfo() {
         const emailText = String(data.email).split(/\r?\n/).map(function (part) { return part.trim(); }).filter(Boolean)[0] || String(data.email).trim();
         el.innerHTML = '&#9993; ' + emailHtml;
         el.setAttribute('href', 'mailto:' + emailText);
+      });
+
+      footerFacebookEls.forEach(function (el) {
+        if (!facebookUrl) return;
+        el.innerHTML = 'f ' + facebookHtml;
+        el.setAttribute('href', facebookUrl);
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
       });
     }
   } catch {

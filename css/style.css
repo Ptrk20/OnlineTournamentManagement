@@ -1,22 +1,24 @@
-/* =========================================================
+﻿/* =========================================================
    Online Tournament Management - Main Stylesheet
    Tech: HTML5, CSS3
    ========================================================= */
 
 /* ---------- CSS Variables ---------- */
 :root {
-  --primary:       #1a237e;
-  --primary-dark:  #0d1257;
-  --primary-light: #283593;
-  --accent:        #ff6f00;
-  --accent-light:  #ffa000;
+  --primary:       #2563EB;
+  --primary-dark:  #1D4ED8;
+  --primary-light: #3B82F6;
+  --secondary:     #16A34A;
+  --secondary-light:#22C55E;
+  --accent:        #16A34A;
+  --accent-light:  #FACC15;
   --white:         #ffffff;
-  --light:         #f5f6fa;
+  --light:         #ffffff;
   --grey:          #e0e0e0;
   --text:          #333333;
   --text-muted:    #777777;
   --danger:        #c62828;
-  --success:       #2e7d32;
+  --success:       #16A34A;
   --shadow:        0 4px 20px rgba(0, 0, 0, 0.12);
   --radius:        8px;
   --transition:    all 0.3s ease;
@@ -61,7 +63,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .text-center { text-align: center; }
 
-.text-accent { color: var(--accent); }
+.text-accent { color: var(--accent-light); }
 
 .btn {
   display: inline-block;
@@ -76,14 +78,14 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--primary);
   color: var(--white);
 }
 
 .btn-primary:hover {
-  background: var(--accent-light);
+  background: var(--primary-dark);
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(255,111,0,0.35);
+  box-shadow: 0 6px 18px rgba(37,99,235,0.28);
 }
 
 .btn-outline {
@@ -98,12 +100,12 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .btn-dark {
-  background: var(--primary);
+  background: var(--secondary);
   color: var(--white);
 }
 
 .btn-dark:hover {
-  background: var(--primary-dark);
+  background: var(--secondary-light);
   transform: translateY(-2px);
 }
 
@@ -116,7 +118,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .badge-success { background: #e8f5e9; color: var(--success); }
-.badge-accent  { background: #fff3e0; color: var(--accent); }
+.badge-accent  { background: #fef9c3; color: #a16207; }
 .badge-danger  { background: #ffebee; color: var(--danger); }
 .badge-primary { background: #e8eaf6; color: var(--primary); }
 
@@ -166,12 +168,14 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .nav-brand .brand-icon {
   width: 42px;
   height: 42px;
-  background: var(--accent);
+  background: #ffffff url('../src/images/cvsu_bacoor_sports_hub_logo.png') center/84% no-repeat;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 0;
+  color: transparent;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
 }
 
 .nav-brand .brand-name {
@@ -222,7 +226,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .nav-menu .btn-login {
-  background: var(--accent);
+  background: var(--primary);
   color: var(--white);
   padding: 8px 20px;
   border-radius: var(--radius);
@@ -231,7 +235,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .nav-menu .btn-login:hover {
-  background: var(--accent-light);
+  background: var(--primary-dark);
 }
 
 .hamburger {
@@ -253,7 +257,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 /* ---------- Hero Section ---------- */
 .hero {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, #1565c0 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, #60A5FA 100%);
   color: var(--white);
   padding: 100px 0 80px;
   position: relative;
@@ -336,7 +340,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   line-height: 1.15;
 }
 
-.hero-content h1 span { color: var(--accent); }
+.hero-content h1 span { color: var(--accent-light); }
 
 .hero-content p {
   font-size: 1.05rem;
@@ -552,6 +556,203 @@ h1, h2, h3, h4 { line-height: 1.2; }
   margin-bottom: 18px;
 }
 
+/* ---------- Events Carousel (index.html) ---------- */
+.ev-carousel-wrap {
+  position: relative;
+}
+
+.ev-carousel {
+  position: relative;
+  padding: 0 36px;
+}
+
+.ev-carousel-viewport {
+  overflow-x: clip;   /* clips sliding track horizontally only */
+  overflow-y: visible; /* lets card shadows bleed out top & bottom */
+  width: 100%;
+  padding: 10px 6px;  /* breathing room so shadows aren't cut off */
+  margin: -10px -6px; /* cancel out layout shift from the padding */
+}
+
+.ev-carousel-track {
+  display: flex;
+  flex-wrap: nowrap;
+  transition: transform 0.42s ease;
+  will-change: transform;
+}
+
+/* 3 visible by default */
+.ev-carousel-slide {
+  flex: 0 0 33.333%;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 899px) {
+  .ev-carousel-slide { flex: 0 0 50%; }
+  .ev-carousel-nav.prev { left: -18px; }
+  .ev-carousel-nav.next { right: -18px; }
+}
+
+@media (max-width: 579px) {
+  .ev-carousel-slide { flex: 0 0 100%; padding: 0 4px; }
+  .ev-carousel-nav.prev { left: -14px; }
+  .ev-carousel-nav.next { right: -14px; }
+}
+
+/* ---------- Event card (inside carousel) ---------- */
+.ev-event-card {
+  background: var(--white);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: transform 0.22s, box-shadow 0.22s;
+}
+
+.ev-event-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.14);
+}
+
+.ev-event-card-header {
+  padding: 18px 18px 10px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ev-event-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.3;
+  flex: 1;
+}
+
+.ev-event-status {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ev-event-status.status-ongoing  { background: #d1fadf; color: #066227; }
+.ev-event-status.status-upcoming { background: #dbeafe; color: #1e40af; }
+.ev-event-status.status-pending  { background: #fef9c3; color: #854d0e; }
+.ev-event-status.status-completed{ background: #f3f4f6; color: #374151; }
+.ev-event-status.status-cancelled{ background: #fee2e2; color: #991b1b; }
+.ev-event-status.status-default  { background: #f3f4f6; color: #374151; }
+
+.ev-event-card-body {
+  padding: 0 18px 18px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ev-event-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.ev-event-meta-row .icon {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.ev-event-divider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 4px 0;
+}
+
+.ev-event-card-footer {
+  padding: 12px 18px;
+  border-top: 1px solid #f0f2f5;
+}
+
+.ev-event-card-footer a {
+  display: block;
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.18s;
+}
+
+.ev-event-card-footer a:hover { background: var(--primary-dark, #1a3a7c); }
+
+.ev-carousel-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 1px solid #e0e4ef;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: background 0.18s, color 0.18s;
+}
+
+.ev-carousel-nav:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.ev-carousel-nav.prev { left: -22px; }
+.ev-carousel-nav.next { right: -22px; }
+
+.ev-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.ev-carousel-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: none;
+  background: #c8d0e2;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.18s, transform 0.18s;
+}
+
+.ev-carousel-dot.active {
+  background: var(--primary);
+  transform: scale(1.25);
+}
+
 /* ---------- News Section ---------- */
 .news-grid {
   display: grid;
@@ -571,7 +772,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .news-card .news-img {
   height: 200px;
-  background: linear-gradient(135deg, #0d47a1, #1565c0);
+  background: linear-gradient(135deg, #1D4ED8, #60A5FA);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -768,7 +969,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .home-news-dot.active {
   width: 26px;
-  background: #1a237e;
+  background: #2563EB;
 }
 
 /* ---------- News Dashboard (4 Modals) ---------- */
@@ -982,7 +1183,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
-  color: #1a237e;
+  color: #2563EB;
   font-size: 1.1rem;
   font-weight: 800;
   cursor: pointer;
@@ -1022,14 +1223,14 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .highlight-dot.active {
   width: 22px;
   border-radius: 999px;
-  background: #1a237e;
+  background: #2563EB;
 }
 
 .article-back-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #1a237e;
+  color: #2563EB;
   font-weight: 700;
   text-decoration: none;
   margin-bottom: 14px;
@@ -1074,7 +1275,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   border: none;
   border-radius: 50%;
   background: rgba(255,255,255,.92);
-  color: #1a237e;
+  color: #2563EB;
   font-weight: 800;
   font-size: 1rem;
   cursor: pointer;
@@ -1107,7 +1308,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .article-dot.active {
   width: 22px;
   border-radius: 999px;
-  background: #1a237e;
+  background: #2563EB;
 }
 
 .article-header {
@@ -1249,7 +1450,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .sms-pill.sent {
   background: #e8f5e9;
-  color: #2e7d32;
+  color: #16A34A;
 }
 
 .sms-pill.queued {
@@ -1375,25 +1576,18 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .about-image {
-  background: linear-gradient(135deg, var(--primary), var(--accent));
+  background: #ffffff;
   border-radius: 16px;
   height: 420px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 8rem;
   position: relative;
   overflow: hidden;
 }
 
 .about-image::after {
-  content: '';
-  position: absolute;
-  bottom: 0; right: 0;
-  width: 160px; height: 160px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 50%;
-  transform: translate(40%, 40%);
+  content: none;
 }
 
 .about-content .sub {
@@ -2009,7 +2203,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   font-size: 0.75rem;
   border-radius: 999px;
   background: #e8f5e9;
-  color: #2e7d32;
+  color: #16A34A;
   padding: 4px 10px;
   font-weight: 700;
 }
@@ -2214,12 +2408,13 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .footer-brand .logo .icon {
   width: 36px;
   height: 36px;
-  background: var(--accent);
+  background: #ffffff url('../src/images/cvsu_bacoor_sports_hub_logo.png') center/84% no-repeat;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+  font-size: 0;
+  color: transparent;
 }
 
 .footer-brand p {
@@ -2477,7 +2672,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 /* =============================================
-   CAMPUS SPORTSFEST — MEDAL STANDINGS WIDGET
+   CAMPUS SPORTSFEST â€” MEDAL STANDINGS WIDGET
    ============================================= */
 @keyframes pulse {
   0%,100% { opacity: 1; transform: scale(1); }
@@ -2587,7 +2782,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
    ============================================= */
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0d1257 0%, #1a237e 50%, #1565c0 100%);
+  background: linear-gradient(135deg, #1D4ED8 0%, #2563EB 50%, #60A5FA 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2651,7 +2846,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .login-side .brand .icon {
   width: 50px;
   height: 50px;
-  background: #ff6f00;
+  background: #16A34A;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -2711,7 +2906,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .feat-list li .dot {
   width: 8px;
   height: 8px;
-  background: #ff6f00;
+  background: #16A34A;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -2726,7 +2921,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .login-form-card h2 {
   font-size: 1.5rem;
-  color: #1a237e;
+  color: #2563EB;
   margin-bottom: 6px;
 }
 
@@ -2762,14 +2957,14 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .login-form-card input:focus {
   outline: none;
-  border-color: #1a237e;
+  border-color: #2563EB;
   box-shadow: 0 0 0 3px rgba(26, 35, 126, .08);
   background: #fff;
 }
 
 .login-form-card input[type="checkbox"] {
   width: auto;
-  accent-color: #1a237e;
+  accent-color: #2563EB;
 }
 
 .password-wrap {
@@ -2811,7 +3006,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .login-form-options a {
-  color: #ff6f00;
+  color: #16A34A;
   font-weight: 600;
 }
 
@@ -2828,7 +3023,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .login-btn {
   width: 100%;
   padding: 13px;
-  background: #ff6f00;
+  background: #16A34A;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -2840,7 +3035,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .login-btn:hover {
-  background: #ffa000;
+  background: #FACC15;
   transform: translateY(-1px);
 }
 
@@ -2858,7 +3053,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 }
 
 .login-footer a {
-  color: #1a237e;
+  color: #2563EB;
   font-weight: 600;
 }
 
@@ -2883,4 +3078,5 @@ h1, h2, h3, h4 { line-height: 1.2; }
     padding: 36px 28px;
   }
 }
+
 

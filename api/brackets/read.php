@@ -24,6 +24,12 @@ function brackets_read_error(int $code, string $msg): void {
     die(json_encode(['success' => false, 'message' => $msg]));
 }
 
+$hasUiThemeColumn = false;
+$themeColChk = $conn->query("SHOW COLUMNS FROM tournament_brackets LIKE 'ui_theme'");
+if ($themeColChk && $themeColChk->num_rows > 0) $hasUiThemeColumn = true;
+if ($themeColChk instanceof mysqli_result) $themeColChk->free();
+$bracketThemeSelect = $hasUiThemeColumn ? 'ui_theme' : "'dark' AS ui_theme";
+
 // ── Resolve which bracket to load ─────────────────────────────────────────
 if (!empty($_GET['event_id'])) {
     $eventId = intval($_GET['event_id']);
@@ -31,7 +37,7 @@ if (!empty($_GET['event_id'])) {
 
     $stmt = $conn->prepare(
         'SELECT id, event_id, bracket_code, tournament_type, round_robin_format,
-                has_third_place_match, participant_count, status, created_by, created_at
+            has_third_place_match, participant_count, status, created_by, created_at, ' . $bracketThemeSelect . '
            FROM tournament_brackets
           WHERE event_id = ?
           ORDER BY id DESC LIMIT 1'
@@ -43,7 +49,7 @@ if (!empty($_GET['event_id'])) {
 
     $stmt = $conn->prepare(
         'SELECT id, event_id, bracket_code, tournament_type, round_robin_format,
-                has_third_place_match, participant_count, status, created_by, created_at
+            has_third_place_match, participant_count, status, created_by, created_at, ' . $bracketThemeSelect . '
            FROM tournament_brackets
           WHERE id = ?
           LIMIT 1'
@@ -195,6 +201,7 @@ echo json_encode([
         'has_third_place_match' => (bool)$bracket['has_third_place_match'],
         'participant_count'   => (int)$bracket['participant_count'],
         'status'              => $bracket['status'],
+        'ui_theme'            => in_array(($bracket['ui_theme'] ?? ''), ['dark', 'light'], true) ? $bracket['ui_theme'] : 'dark',
         'created_at'          => $bracket['created_at'],
         'teams'               => $teamsArr,
         'matches'             => $matchesArr,

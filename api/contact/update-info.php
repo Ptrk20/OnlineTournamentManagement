@@ -27,21 +27,47 @@ if (!$data) {
 $address = $data['address'] ?? '';
 $phone   = $data['phone'] ?? '';
 $email   = $data['email'] ?? '';
+$facebookUrl = $data['facebook_url'] ?? '';
 $userId  = $_SESSION['user_id'];
 
+$facebookUrl = trim((string)$facebookUrl);
+if ($facebookUrl !== '' && !preg_match('/^https?:\/\//i', $facebookUrl)) {
+  $facebookUrl = 'https://' . $facebookUrl;
+}
+if (strlen($facebookUrl) > 255) {
+  $facebookUrl = substr($facebookUrl, 0, 255);
+}
+
 try {
+  $hasFacebookColumn = false;
+  $facebookColResult = $conn->query("SHOW COLUMNS FROM contact_page_info LIKE 'facebook_url'");
+  if ($facebookColResult && $facebookColResult->num_rows > 0) {
+    $hasFacebookColumn = true;
+  }
+
   // Check if record exists
   $check = $conn->query("SELECT id FROM contact_page_info WHERE id = 1 LIMIT 1");
 
   if ($check->num_rows === 0) {
     // INSERT
-    $query = "INSERT INTO contact_page_info (id, address, phone, email, updated_by, updated_at)
-              VALUES (1, ?, ?, ?, ?, NOW())";
+    if ($hasFacebookColumn) {
+      $query = "INSERT INTO contact_page_info (id, address, phone, email, facebook_url, updated_by, updated_at)
+                VALUES (1, ?, ?, ?, ?, ?, NOW())";
+    } else {
+      $query = "INSERT INTO contact_page_info (id, address, phone, email, updated_by, updated_at)
+                VALUES (1, ?, ?, ?, ?, NOW())";
+    }
   } else {
     // UPDATE
-    $query = "UPDATE contact_page_info 
-              SET address = ?, phone = ?, email = ?, updated_by = ?, updated_at = NOW()
-              WHERE id = 1";
+    if ($hasFacebookColumn) {
+      $query = "UPDATE contact_page_info 
+                SET address = ?, phone = ?, email = ?, facebook_url = ?, updated_by = ?, updated_at = NOW()
+                WHERE id = 1";
+    } else {
+      $query = "UPDATE contact_page_info 
+                SET address = ?, phone = ?, email = ?, updated_by = ?, updated_at = NOW()
+                WHERE id = 1";
+    }
   }
 
   $stmt = $conn->prepare($query);
@@ -49,7 +75,11 @@ try {
     throw new Exception('Prepare failed: ' . $conn->error);
   }
 
-  $stmt->bind_param('sssi', $address, $phone, $email, $userId);
+  if ($hasFacebookColumn) {
+    $stmt->bind_param('ssssi', $address, $phone, $email, $facebookUrl, $userId);
+  } else {
+    $stmt->bind_param('sssi', $address, $phone, $email, $userId);
+  }
 
   if (!$stmt->execute()) {
     throw new Exception('Execute failed: ' . $stmt->error);

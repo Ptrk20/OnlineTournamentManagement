@@ -9,7 +9,14 @@ header('Content-Type: application/json');
 require_once dirname(__DIR__, 2) . '/config/db.php';
 
 try {
-  $query = "SELECT id, address, phone, email FROM contact_page_info WHERE id = 1 LIMIT 1";
+  $hasFacebookColumn = false;
+  $facebookColResult = $conn->query("SHOW COLUMNS FROM contact_page_info LIKE 'facebook_url'");
+  if ($facebookColResult && $facebookColResult->num_rows > 0) {
+    $hasFacebookColumn = true;
+  }
+
+  $facebookSelect = $hasFacebookColumn ? 'facebook_url' : "'' AS facebook_url";
+  $query = "SELECT id, address, phone, email, $facebookSelect FROM contact_page_info WHERE id = 1 LIMIT 1";
   $result = $conn->query($query);
 
   if (!$result) {
@@ -23,7 +30,8 @@ try {
       'id'      => 1,
       'address' => '',
       'phone'   => '',
-      'email'   => ''
+      'email'   => '',
+      'facebook_url' => ''
     ]);
     exit;
   }
@@ -34,7 +42,8 @@ try {
     'id'      => $row['id'],
     'address' => $row['address'] ?? '',
     'phone'   => $row['phone'] ?? '',
-    'email'   => $row['email'] ?? ''
+    'email'   => $row['email'] ?? '',
+    'facebook_url' => $row['facebook_url'] ?? ''
   ]);
 
 } catch (Exception $e) {

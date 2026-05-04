@@ -21,8 +21,24 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     ]));
 }
 
+$hasMissionColumn = false;
+$hasVisionColumn = false;
+
+$missionCol = $conn->query("SHOW COLUMNS FROM about_page_content LIKE 'mission'");
+if ($missionCol && $missionCol->num_rows > 0) {
+    $hasMissionColumn = true;
+}
+
+$visionCol = $conn->query("SHOW COLUMNS FROM about_page_content LIKE 'vision'");
+if ($visionCol && $visionCol->num_rows > 0) {
+    $hasVisionColumn = true;
+}
+
+$missionSelect = $hasMissionColumn ? 'mission' : "'' AS mission";
+$visionSelect = $hasVisionColumn ? 'vision' : "'' AS vision";
+
 $stmt = $conn->prepare(
-    "SELECT id, organization_name, description, photo_path, updated_at
+    "SELECT id, organization_name, description, photo_path, $missionSelect, $visionSelect, updated_at
      FROM about_page_content
      WHERE id = 1"
 );

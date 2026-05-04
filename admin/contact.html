@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contact Messages — OTM Admin</title>
+  <title>Contact Messages — CvSU Bacoor Sports Hub Admin</title>
   <link rel="stylesheet" href="../css/style.css" />
   <link rel="stylesheet" href="../css/admin.css" />
 </head>
 <body class="admin-body" id="adminContact">
 
   <aside class="sidebar" id="adminSidebar">
-    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">OTM Admin</span><span class="sub">Tournament Management</span></div></div>
+    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">CvSU Bacoor Sports Hub</span><span class="sub">Admin Portal</span></div></div>
     <nav class="sidebar-nav">
       <div class="nav-label">Main</div>
       <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
@@ -49,7 +49,7 @@
           <button class="btn btn-primary" onclick="openContactModal()" style="font-size:.85rem;padding:8px 16px;">&#9998; Edit</button>
         </div>
         <div class="admin-card-body">
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
             <div style="padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #1a237e;">
               <div style="font-size:.72rem;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Address</div>
               <div id="displayAddress" style="font-size:.95rem;color:#333;line-height:1.5;">Loading...</div>
@@ -61,6 +61,10 @@
             <div style="padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #1a237e;">
               <div style="font-size:.72rem;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Email</div>
               <div id="displayEmail" style="font-size:.95rem;color:#333;line-height:1.5;">Loading...</div>
+            </div>
+            <div style="padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #1a237e;">
+              <div style="font-size:.72rem;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Facebook Page</div>
+              <div id="displayFacebook" style="font-size:.95rem;color:#333;line-height:1.5;">Loading...</div>
             </div>
           </div>
         </div>
@@ -138,6 +142,10 @@
           <div class="form-group">
             <label for="contactEmail">Email Address(es)</label>
             <textarea id="contactEmail" rows="2" placeholder="Enter email addresses (one per line)" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:6px;font-size:.9rem;font-family:inherit;resize:none;"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="contactFacebook">Facebook Page URL</label>
+            <input id="contactFacebook" type="url" placeholder="https://www.facebook.com/your-page" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:6px;font-size:.9rem;font-family:inherit;" />
           </div>
         </form>
       </div>

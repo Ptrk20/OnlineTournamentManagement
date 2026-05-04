@@ -265,6 +265,14 @@ let bracketSetupContext = {
 };
 let inlineBracketData = null;
 let inlineBracketSelectedMatchId = null;
+let eventSchedulesState = {
+  event: null,
+  matches: [],
+  view: 'list',
+  calendarYear: null,
+  calendarMonth: null,
+  selectedMatchId: null
+};
 
 async function loadSportsDropdown() {
   const sel = document.getElementById('eventSportsId');
@@ -317,6 +325,7 @@ function initEventManager() {
   }
 
   initInlineBracketLanding();
+  initEventScheduleManager();
 
   // Sports manager
   const manageSportsBtn = document.getElementById('manageSportsBtn');
@@ -438,6 +447,7 @@ async function renderEventsTable(filter = '') {
       <td>
         <div class="action-btns">
           <button class="action-btn view" title="Bracketing" onclick="openEventBracketing(${Number(ev.id)})"><img src="../src/images/tournament-bracket.png" alt="Bracketing" class="action-btn-icon" /></button>
+          <button class="action-btn view" title="View Saved Schedules" onclick="openEventSchedules(${Number(ev.id)})">&#128197;</button>
           <button class="action-btn edit" title="Edit" onclick="editEvent(${Number(ev.id)})">✏️</button>
           <button class="action-btn del"  title="Delete" onclick="deleteEvent(${Number(ev.id)})">🗑️</button>
         </div>
@@ -734,6 +744,456 @@ window.openEventBracketing = async function(id) {
   }
 };
 
+function initEventScheduleManager() {
+  const toggle = document.getElementById('adminScheduleViewToggle');
+  const listWrap = document.getElementById('adminScheduleList');
+  const saveBtn = document.getElementById('adminScheduleSaveBtn');
+  const resetBtn = document.getElementById('adminScheduleResetBtn');
+
+  if (toggle) {
+    toggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-view]');
+      if (!btn) return;
+      eventSchedulesState.view = btn.getAttribute('data-view') === 'calendar' ? 'calendar' : 'list';
+      renderEventScheduleView();
+    });
+  }
+
+  if (listWrap) {
+    listWrap.addEventListener('click', (e) => {
+      const navBtn = e.target.closest('[data-calendar-nav]');
+      if (navBtn) {
+        if (eventSchedulesState.calendarYear == null || eventSchedulesState.calendarMonth == null) {
+          const now = new Date();
+          eventSchedulesState.calendarYear = now.getFullYear();
+          eventSchedulesState.calendarMonth = now.getMonth();
+        }
+
+        if (navBtn.getAttribute('data-calendar-nav') === 'prev') {
+          eventSchedulesState.calendarMonth -= 1;
+        } else {
+          eventSchedulesState.calendarMonth += 1;
+        }
+
+        if (eventSchedulesState.calendarMonth < 0) {
+          eventSchedulesState.calendarMonth = 11;
+          eventSchedulesState.calendarYear -= 1;
+        }
+        if (eventSchedulesState.calendarMonth > 11) {
+          eventSchedulesState.calendarMonth = 0;
+          eventSchedulesState.calendarYear += 1;
+        }
+        renderEventScheduleView();
+        return;
+      }
+
+      const selBtn = e.target.closest('[data-sched-select]');
+      if (selBtn) {
+        const id = Number(selBtn.getAttribute('data-sched-select') || 0);
+        selectEventScheduleMatch(id);
+      }
+    });
+  }
+
+  if (saveBtn) saveBtn.addEventListener('click', saveSelectedEventSchedule);
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    const selectedId = Number(document.getElementById('adminScheduleMatchId')?.value || 0);
+    if (selectedId > 0) selectEventScheduleMatch(selectedId);
+  });
+}
+
+function scheduleParseDateTime(datePart, timePart) {
+  const d = String(datePart || '').trim();
+  const t = String(timePart || '').trim();
+  if (!d) return null;
+  const full = t ? `${d}T${t}` : `${d}T00:00:00`;
+  const dt = new Date(full);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+function scheduleDateTimeToInputValue(dt) {
+  if (!(dt instanceof Date) || isNaN(dt.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+function scheduleInputToParts(value) {
+  const v = String(value || '').trim();
+  if (!v || !v.includes('T')) return { date: null, time: null };
+  const parts = v.split('T');
+  return {
+    date: parts[0] || null,
+    time: parts[1] ? `${parts[1]}:00` : null
+  };
+}
+
+function scheduleStatusDbToUi(dbStatus) {
+  const s = String(dbStatus || '').toLowerCase();
+  if (s === 'completed') return 'Done';
+  if (s === 'ongoing') return 'Ongoing';
+  if (s === 'cancelled') return 'Cancelled';
+  return 'Upcoming';
+}
+
+function scheduleStatusUiToDb(uiStatus) {
+  const s = String(uiStatus || '').toLowerCase();
+  if (s === 'done') return 'Completed';
+  if (s === 'ongoing') return 'Ongoing';
+  if (s === 'cancelled') return 'Cancelled';
+  return 'Scheduled';
+}
+
+function deriveAutoScheduleStatus(startDt, hasWinner, nowDt) {
+  if (hasWinner) return 'Done';
+  if (!(startDt instanceof Date) || isNaN(startDt.getTime())) return 'Upcoming';
+  const now = nowDt instanceof Date ? nowDt : new Date();
+  if (now.getTime() >= startDt.getTime()) return 'Ongoing';
+  return 'Upcoming';
+}
+
+function scheduleStatusPillClass(uiStatus) {
+  const s = String(uiStatus || 'Upcoming').toLowerCase();
+  if (s === 'ongoing') return 'schedule-status live';
+  return 'schedule-status';
+}
+
+function scheduleStatusPillStyle(uiStatus) {
+  const s = String(uiStatus || 'Upcoming').toLowerCase();
+  if (s === 'done') return 'background:#e5e7eb;color:#374151;';
+  if (s === 'cancelled') return 'background:#fee2e2;color:#b91c1c;';
+  if (s === 'upcoming') return 'background:#dcfce7;color:#15803d;';
+  return '';
+}
+
+function scheduleMatchSort(a, b) {
+  const stageRank = { upper: 1, main: 1, lower: 2, third_place: 3, final: 4, round_robin: 5 };
+  const stageA = stageRank[String(a.bracket_stage || 'main')] || 99;
+  const stageB = stageRank[String(b.bracket_stage || 'main')] || 99;
+  if (stageA !== stageB) return stageA - stageB;
+  const roundA = Number(a.round || 0);
+  const roundB = Number(b.round || 0);
+  if (roundA !== roundB) return roundA - roundB;
+  return Number(a.id || 0) - Number(b.id || 0);
+}
+
+function normalizeScheduleMatches(rawMatches) {
+  const sorted = rawMatches.slice().sort(scheduleMatchSort);
+  return sorted.map((m) => {
+    const start = scheduleParseDateTime(m.date, m.time);
+    const hasWinner = Number(m.winner_team_id || 0) > 0;
+    const derived = deriveAutoScheduleStatus(start, hasWinner, new Date());
+    const mapped = scheduleStatusDbToUi(m.status);
+    return {
+      id: Number(m.id),
+      label: m.label || `Round ${Number(m.round || 1)}`,
+      round: Number(m.round || 0),
+      bracket_stage: m.bracket_stage || 'main',
+      winner_team_id: m.winner_team_id ? Number(m.winner_team_id) : null,
+      team1: m.team1 || null,
+      team2: m.team2 || null,
+      date: m.date || '',
+      time: m.time || '',
+      location: m.location || '',
+      description: m.description || '',
+      status: mapped === 'Cancelled' ? 'Cancelled' : derived
+    };
+  });
+}
+
+function renderEventScheduleViewButtons() {
+  const listBtn = document.getElementById('adminScheduleViewList');
+  const calBtn = document.getElementById('adminScheduleViewCalendar');
+  if (!listBtn || !calBtn) return;
+  listBtn.classList.toggle('active', eventSchedulesState.view === 'list');
+  calBtn.classList.toggle('active', eventSchedulesState.view === 'calendar');
+}
+
+function formatScheduleDateTimeForList(datePart, timePart) {
+  const dt = scheduleParseDateTime(datePart, timePart);
+  if (!dt) return '—';
+  return dt.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
+}
+
+function renderEventScheduleList(matches) {
+  const listWrap = document.getElementById('adminScheduleList');
+  if (!listWrap) return;
+
+  if (!matches.length) {
+    listWrap.className = 'schedule-list';
+    listWrap.innerHTML = '<div class="empty-state">No saved schedules for this event yet.</div>';
+    return;
+  }
+
+  listWrap.className = 'schedule-list';
+  listWrap.innerHTML = matches.map((m) => {
+    const team1 = m.team1 && m.team1.name ? m.team1.name : '-';
+    const team2 = m.team2 && m.team2.name ? m.team2.name : '-';
+    const selected = Number(m.id) === Number(eventSchedulesState.selectedMatchId);
+    return '' +
+      '<div class="schedule-item" style="grid-template-columns:180px 1fr auto; border-color:' + (selected ? '#3b82f6' : '#eceef5') + ';">' +
+        '<div class="schedule-time">' + escapeAdminHTML(formatScheduleDateTimeForList(m.date, m.time)) + '</div>' +
+        '<div><strong>' + escapeAdminHTML(team1 + ' vs ' + team2) + '</strong><div class="schedule-meta">' +
+          escapeAdminHTML(m.label) + ' • ' + escapeAdminHTML(m.location || 'No location') +
+        '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span class="' + scheduleStatusPillClass(m.status) + '" style="' + scheduleStatusPillStyle(m.status) + '">' + escapeAdminHTML(m.status) + '</span>' +
+          '<button type="button" class="btn" data-sched-select="' + Number(m.id) + '" style="background:#f0f2f5;color:#333;font-size:.75rem;padding:6px 10px;">Edit</button>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function renderEventScheduleCalendar(matches) {
+  const listWrap = document.getElementById('adminScheduleList');
+  if (!listWrap) return;
+
+  const parsedEntries = matches.map((m) => {
+    return { match: m, date: scheduleParseDateTime(m.date, m.time) };
+  }).filter((entry) => entry.date !== null);
+
+  if (!parsedEntries.length) {
+    listWrap.className = 'schedule-list';
+    listWrap.innerHTML = '<div class="empty-state">No valid schedule dates to display in calendar view.</div>';
+    return;
+  }
+
+  if (eventSchedulesState.calendarYear === null || eventSchedulesState.calendarMonth === null) {
+    const initialDate = parsedEntries[0].date;
+    eventSchedulesState.calendarYear = initialDate.getFullYear();
+    eventSchedulesState.calendarMonth = initialDate.getMonth();
+  }
+
+  const year = eventSchedulesState.calendarYear;
+  const month = eventSchedulesState.calendarMonth;
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const eventsByDay = {};
+  parsedEntries.forEach((entry) => {
+    if (entry.date.getFullYear() !== year || entry.date.getMonth() !== month) return;
+    const day = entry.date.getDate();
+    if (!eventsByDay[day]) eventsByDay[day] = [];
+    eventsByDay[day].push(entry);
+  });
+
+  let html = '<div class="schedule-calendar">' +
+    '<div class="calendar-header">' +
+      '<button type="button" class="calendar-nav-btn" data-calendar-nav="prev" aria-label="Previous month">&#8249;</button>' +
+      '<span class="calendar-month-label">' + escapeAdminHTML(monthLabel) + '</span>' +
+      '<button type="button" class="calendar-nav-btn" data-calendar-nav="next" aria-label="Next month">&#8250;</button>' +
+    '</div>' +
+    '<div class="calendar-weekdays">' +
+      '<span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>' +
+    '</div><div class="calendar-grid">';
+
+  for (let blank = 0; blank < startOffset; blank += 1) {
+    html += '<div class="calendar-cell empty"></div>';
+  }
+
+  for (let dayNum = 1; dayNum <= daysInMonth; dayNum += 1) {
+    const dayEvents = eventsByDay[dayNum] || [];
+    html += '<div class="calendar-cell">';
+    html += '<div class="calendar-day">' + dayNum + '</div>';
+
+    if (!dayEvents.length) {
+      html += '<div class="calendar-no-events">No games</div>';
+    } else {
+      html += '<div class="calendar-events">';
+      dayEvents.slice(0, 3).forEach((entry) => {
+        const match = entry.match;
+        const timeLabel = entry.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        html += '<button type="button" class="calendar-event" data-sched-select="' + Number(match.id) + '" style="cursor:pointer;text-align:left;' + (Number(match.id) === Number(eventSchedulesState.selectedMatchId) ? 'outline:2px solid #3b82f6;' : '') + '">' +
+          '<strong>' + escapeAdminHTML(timeLabel) + '</strong><span>' + escapeAdminHTML((match.team1?.name || '-') + ' vs ' + (match.team2?.name || '-')) + '</span>' +
+        '</button>';
+      });
+      if (dayEvents.length > 3) {
+        html += '<div class="calendar-more">+' + (dayEvents.length - 3) + ' more</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  html += '</div></div>';
+  listWrap.className = 'schedule-list schedule-list-calendar';
+  listWrap.innerHTML = html;
+}
+
+function renderEventScheduleView() {
+  renderEventScheduleViewButtons();
+  const matches = eventSchedulesState.matches || [];
+  if (eventSchedulesState.view === 'calendar') {
+    renderEventScheduleCalendar(matches);
+  } else {
+    renderEventScheduleList(matches);
+  }
+}
+
+function selectEventScheduleMatch(matchId) {
+  const id = Number(matchId || 0);
+  const match = (eventSchedulesState.matches || []).find((m) => Number(m.id) === id);
+  if (!match) return;
+
+  eventSchedulesState.selectedMatchId = id;
+
+  const hint = document.getElementById('adminScheduleEditorHint');
+  const matchIdEl = document.getElementById('adminScheduleMatchId');
+  const matchLabelEl = document.getElementById('adminScheduleMatchLabel');
+  const startEl = document.getElementById('adminScheduleStart');
+  const locationEl = document.getElementById('adminScheduleLocation');
+  const descEl = document.getElementById('adminScheduleDescription');
+  const statusEl = document.getElementById('adminScheduleStatus');
+
+  if (hint) hint.textContent = 'Status auto-validates from machine time; Done is only set when winner is declared, unless status is set to Cancelled.';
+  if (matchIdEl) matchIdEl.value = String(id);
+
+  const team1 = match.team1 && match.team1.name ? match.team1.name : '-';
+  const team2 = match.team2 && match.team2.name ? match.team2.name : '-';
+  if (matchLabelEl) matchLabelEl.value = `${match.label} (${team1} vs ${team2})`;
+
+  const start = scheduleParseDateTime(match.date, match.time);
+
+  if (startEl) startEl.value = start ? scheduleDateTimeToInputValue(start) : '';
+  if (locationEl) locationEl.value = match.location || '';
+  if (descEl) descEl.value = match.description || '';
+  if (statusEl) statusEl.value = match.status || 'Upcoming';
+
+  renderEventScheduleView();
+}
+
+async function saveSelectedEventSchedule() {
+  const matchId = Number(document.getElementById('adminScheduleMatchId')?.value || 0);
+  if (matchId <= 0) {
+    adminToast('Select a match to edit.', 'error');
+    return;
+  }
+
+  const match = (eventSchedulesState.matches || []).find((m) => Number(m.id) === matchId);
+  if (!match) {
+    adminToast('Selected match was not found.', 'error');
+    return;
+  }
+
+  const startInput = document.getElementById('adminScheduleStart')?.value || '';
+  const location = (document.getElementById('adminScheduleLocation')?.value || '').trim();
+  const description = (document.getElementById('adminScheduleDescription')?.value || '').trim();
+  const statusSelected = document.getElementById('adminScheduleStatus')?.value || 'Upcoming';
+
+  if (!startInput) {
+    adminToast('Start datetime is required.', 'error');
+    return;
+  }
+  const startDt = new Date(startInput);
+  if (isNaN(startDt.getTime())) {
+    adminToast('Invalid start datetime.', 'error');
+    return;
+  }
+
+  const hasWinner = Number(match.winner_team_id || 0) > 0;
+  const autoStatus = statusSelected === 'Cancelled'
+    ? 'Cancelled'
+    : deriveAutoScheduleStatus(startDt, hasWinner, new Date());
+
+  const startParts = scheduleInputToParts(startInput);
+
+  try {
+    const res = await fetch('../api/matches/update.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: matchId,
+        schedule_date: startParts.date,
+        schedule_time: startParts.time,
+        location: location || null,
+        match_description: description || null,
+        match_status: scheduleStatusUiToDb(autoStatus)
+      })
+    });
+    const json = await parseApiJson(res);
+    if (!json.success) throw new Error(json.message || 'Failed to save match schedule.');
+
+    match.date = startParts.date || '';
+    match.time = startParts.time || '';
+    match.location = location;
+    match.description = description;
+    match.status = autoStatus;
+
+    const statusEl = document.getElementById('adminScheduleStatus');
+    if (statusEl) statusEl.value = autoStatus;
+
+    renderEventScheduleView();
+    adminToast('Match schedule saved successfully.');
+  } catch (err) {
+    console.error('saveSelectedEventSchedule error:', err);
+    adminToast(err.message || 'Failed to save match schedule.', 'error');
+  }
+}
+
+window.openEventSchedules = async function(id) {
+  const ev = eventsCache.find(e => Number(e.id) === Number(id));
+  if (!ev) {
+    adminToast('Event not found.', 'error');
+    return;
+  }
+
+  const titleEl = document.getElementById('eventSchedulesModalTitle');
+  const listWrap = document.getElementById('adminScheduleList');
+  if (!listWrap) {
+    adminToast('Schedules modal is not available on this page.', 'error');
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = `Saved Match Schedules - ${ev.title || 'Event'}`;
+  listWrap.className = 'schedule-list';
+  listWrap.innerHTML = '<div class="empty-state">Loading schedules...</div>';
+
+  eventSchedulesState = {
+    event: ev,
+    matches: [],
+    view: 'list',
+    calendarYear: null,
+    calendarMonth: null,
+    selectedMatchId: null
+  };
+  renderEventScheduleViewButtons();
+  openModal('eventSchedulesModal');
+
+  try {
+    const res = await fetch(`../api/brackets/read.php?event_id=${Number(ev.id)}`);
+    const json = await parseApiJson(res);
+
+    if (!json.success || !json.data || !Array.isArray(json.data.matches) || !json.data.matches.length) {
+      listWrap.innerHTML = '<div class="empty-state">No saved bracket matches found for this event.</div>';
+      return;
+    }
+
+    eventSchedulesState.matches = normalizeScheduleMatches(json.data.matches);
+
+    const firstWithDate = eventSchedulesState.matches.find((m) => scheduleParseDateTime(m.date, m.time));
+    if (firstWithDate) {
+      const start = scheduleParseDateTime(firstWithDate.date, firstWithDate.time);
+      eventSchedulesState.calendarYear = start.getFullYear();
+      eventSchedulesState.calendarMonth = start.getMonth();
+    }
+
+    renderEventScheduleView();
+
+    if (eventSchedulesState.matches.length) {
+      selectEventScheduleMatch(eventSchedulesState.matches[0].id);
+    }
+  } catch (err) {
+    console.error('openEventSchedules error:', err);
+    listWrap.className = 'schedule-list';
+    listWrap.innerHTML = '<div class="empty-state" style="color:#e53935;">' + escapeAdminHTML(err.message || 'Failed to load schedules.') + '</div>';
+  }
+};
+
 function buildAutoPairings(teams) {
   const slots = [];
   for (let i = 0; i < teams.length; i += 2) {
@@ -759,7 +1219,7 @@ function eliminationRoundLabelByMatchCount(matchCount, roundNo) {
   return `Round ${roundNo}`;
 }
 
-function generateSingleEliminationPayload(manualPairings) {
+function generateSingleEliminationPayload(manualPairings, includeThirdPlaceMatch = false) {
   const matches = [];
   let matchId = 1;
   const rounds = [];
@@ -830,6 +1290,42 @@ function generateSingleEliminationPayload(manualPairings) {
       match.label = roundLabel;
     });
   });
+
+  // Add optional third-place playoff from semifinal losers.
+  if (includeThirdPlaceMatch && rounds.length >= 2) {
+    const finalRoundNo = rounds.length;
+    const semifinalRound = rounds[finalRoundNo - 2] || [];
+
+    if (semifinalRound.length >= 2) {
+      const thirdPlaceMatch = {
+        id: matchId++,
+        round: finalRoundNo,
+        label: '3rd Place Match',
+        bracket_stage: 'third_place',
+        team1: null,
+        team2: null,
+        score1: 0,
+        score2: 0,
+        winner_team_id: null,
+        status: 'Pending',
+        date: '',
+        time: '',
+        location: '',
+        description: 'Losers of the semifinals play for 3rd place.',
+        next_match_id: null,
+        next_slot: null,
+        loser_next_match_id: null,
+        loser_next_slot: null
+      };
+
+      semifinalRound[0].loser_next_match_id = thirdPlaceMatch.id;
+      semifinalRound[0].loser_next_slot = 'team1';
+      semifinalRound[1].loser_next_match_id = thirdPlaceMatch.id;
+      semifinalRound[1].loser_next_slot = 'team2';
+
+      matches.push(thirdPlaceMatch);
+    }
+  }
 
   return matches;
 }
@@ -1215,7 +1711,7 @@ async function generateTournamentBracket() {
       matches = generateDoubleEliminationPayload(teams);
     } else {
       const pairings = buildEmptyPairingsByTeamCount(teams.length);
-      matches = generateSingleEliminationPayload(pairings);
+      matches = generateSingleEliminationPayload(pairings, thirdPlace);
     }
   } catch (e) {
     adminToast(e.message || 'Invalid bracket setup.', 'error');
@@ -1246,6 +1742,7 @@ async function generateTournamentBracket() {
   let bracketId = null;
   try {
     const loggedUser = JSON.parse(sessionStorage.getItem('otm_user') || localStorage.getItem('otm_user') || '{}');
+    const uiTheme = (localStorage.getItem('otm_bracket_theme') === 'light') ? 'light' : 'dark';
     const res = await fetch('../api/brackets/save.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1253,6 +1750,7 @@ async function generateTournamentBracket() {
         event_id:         Number(event.id),
         tournament_type:  type,
         third_place_match: thirdPlace,
+        ui_theme:         uiTheme,
         category:         event.category || '',
         created_by:       loggedUser.id || null,
         teams:            payload.teams,
@@ -3692,16 +4190,29 @@ async function loadContactInfo() {
       const addr  = document.getElementById('displayAddress');
       const phone = document.getElementById('displayPhone');
       const email = document.getElementById('displayEmail');
+      const facebook = document.getElementById('displayFacebook');
       if (addr)  addr.innerHTML  = data.address ? data.address.replace(/\n/g, '<br>') : 'Not set';
       if (phone) phone.innerHTML = data.phone   ? data.phone.replace(/\n/g, '<br>')   : 'Not set';
       if (email) email.innerHTML = data.email   ? data.email.replace(/\n/g, '<br>')   : 'Not set';
+      if (facebook) {
+        const fbUrl = (data.facebook_url || '').trim();
+        if (fbUrl) {
+          const normalizedUrl = /^https?:\/\//i.test(fbUrl) ? fbUrl : ('https://' + fbUrl);
+          const safeUrl = escapeAdminHTML(normalizedUrl);
+          facebook.innerHTML = '<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer">' + safeUrl + '</a>';
+        } else {
+          facebook.textContent = 'Not set';
+        }
+      }
 
       const addrInput  = document.getElementById('contactAddress');
       const phoneInput = document.getElementById('contactPhone');
       const emailInput = document.getElementById('contactEmail');
+      const facebookInput = document.getElementById('contactFacebook');
       if (addrInput)  addrInput.value  = data.address || '';
       if (phoneInput) phoneInput.value = data.phone   || '';
       if (emailInput) emailInput.value = data.email   || '';
+      if (facebookInput) facebookInput.value = data.facebook_url || '';
     }
   } catch (err) {
     console.error('Error loading contact info:', err);
@@ -3721,7 +4232,8 @@ window.saveContactInfo = async function() {
       body: JSON.stringify({
         address: document.getElementById('contactAddress').value.trim(),
         phone:   document.getElementById('contactPhone').value.trim(),
-        email:   document.getElementById('contactEmail').value.trim()
+        email:   document.getElementById('contactEmail').value.trim(),
+        facebook_url: document.getElementById('contactFacebook').value.trim()
       })
     });
     const data = await resp.json();
@@ -3750,6 +4262,8 @@ function initAboutManager() {
 
   const aboutOrgNameEl     = document.getElementById('aboutOrgName');
   const aboutDescriptionEl = document.getElementById('aboutDescription');
+  const aboutMissionEl     = document.getElementById('aboutMission');
+  const aboutVisionEl      = document.getElementById('aboutVision');
   const imagePreviewEl     = document.getElementById('aboutOrgImagePreview');
   const imageBrowseBtn     = document.getElementById('aboutOrgImageBrowse');
   const imageRemoveBtn     = document.getElementById('aboutOrgImageRemove');
@@ -3806,10 +4320,14 @@ function initAboutManager() {
         const d = json.data;
         if (aboutOrgNameEl)     aboutOrgNameEl.value     = d.organization_name || '';
         if (aboutDescriptionEl) aboutDescriptionEl.value = d.description       || '';
+        if (aboutMissionEl)     aboutMissionEl.value     = d.mission           || '';
+        if (aboutVisionEl)      aboutVisionEl.value      = d.vision            || '';
         currentPhotoPath = d.photo_path || '';
         setOrgImagePreview(currentPhotoPath);
       } else {
         if (aboutOrgNameEl) aboutOrgNameEl.value = 'Online Tournament Management';
+        if (aboutMissionEl) aboutMissionEl.value = '';
+        if (aboutVisionEl)  aboutVisionEl.value = '';
         setOrgImagePreview('');
       }
     } catch {
@@ -3872,6 +4390,8 @@ function initAboutManager() {
 
     const orgName     = aboutOrgNameEl     ? aboutOrgNameEl.value.trim()     : '';
     const description = aboutDescriptionEl ? aboutDescriptionEl.value.trim() : '';
+    const mission     = aboutMissionEl     ? aboutMissionEl.value.trim()     : '';
+    const vision      = aboutVisionEl      ? aboutVisionEl.value.trim()      : '';
 
     if (!orgName) { adminToast('Organization name is required.', 'error'); return; }
 
@@ -3909,6 +4429,8 @@ function initAboutManager() {
         body    : JSON.stringify({
           organization_name : orgName,
           description       : description,
+          mission           : mission,
+          vision            : vision,
           photo_path        : finalPhotoPath,
           updated_by        : updatedBy
         })

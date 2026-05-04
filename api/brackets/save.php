@@ -52,6 +52,8 @@ $hasThirdPlace = empty($input['third_place_match']) ? 0 : 1;
 $category      = trim((string)($input['category'] ?? ''));
 $createdBy     = isset($input['created_by']) ? intval($input['created_by']) : null;
 if ($createdBy !== null && $createdBy <= 0) $createdBy = null;
+$uiThemeInput = strtolower(trim((string)($input['ui_theme'] ?? '')));
+$uiTheme = in_array($uiThemeInput, ['dark', 'light'], true) ? $uiThemeInput : null;
 
 $teams   = $input['teams']   ?? [];
 $matches = $input['matches'] ?? [];
@@ -64,6 +66,21 @@ $chk->bind_param('i', $eventId);
 $chk->execute();
 if ($chk->get_result()->num_rows === 0) brackets_error(404, 'Event not found.');
 $chk->close();
+
+$hasUiThemeColumn = false;
+$colChk = $conn->query("SHOW COLUMNS FROM tournament_brackets LIKE 'ui_theme'");
+if ($colChk && $colChk->num_rows > 0) $hasUiThemeColumn = true;
+if ($colChk instanceof mysqli_result) $colChk->free();
+
+// Preserve previous theme on regenerate if client doesn't provide one.
+if ($hasUiThemeColumn && $uiTheme === null) {
+    $thStmt = $conn->prepare('SELECT ui_theme FROM tournament_brackets WHERE event_id = ? ORDER BY id DESC LIMIT 1');
+    $thStmt->bind_param('i', $eventId);
+    $thStmt->execute();
+    $thRow = $thStmt->get_result()->fetch_assoc();
+    $thStmt->close();
+    $uiTheme = in_array(($thRow['ui_theme'] ?? ''), ['dark', 'light'], true) ? $thRow['ui_theme'] : 'dark';
+}
 
 // ── Delete existing bracket for this event (cascade deletes matches) ───────
 $del = $conn->prepare('DELETE FROM tournament_brackets WHERE event_id = ?');
@@ -78,7 +95,19 @@ $rrFormat         = 'once';
 $bkStatus         = 'Generated';
 
 // Build INSERT dynamically so created_by NULL is handled cleanly
-if ($createdBy !== null) {
+if ($createdBy !== null && $hasUiThemeColumn) {
+    $ins = $conn->prepare(
+        'INSERT INTO tournament_brackets
+           (event_id, bracket_code, tournament_type, round_robin_format,
+            has_third_place_match, participant_count, status, ui_theme, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    // Types: i  s  s  s  i  i  s  s  i   — 9 params
+    $ins->bind_param('isssiissi',
+        $eventId, $bracketCode, $tournamentType, $rrFormat,
+        $hasThirdPlace, $participantCount, $bkStatus, $uiTheme, $createdBy
+    );
+} elseif ($createdBy !== null) {
     $ins = $conn->prepare(
         'INSERT INTO tournament_brackets
            (event_id, bracket_code, tournament_type, round_robin_format,
@@ -89,6 +118,18 @@ if ($createdBy !== null) {
     $ins->bind_param('isssiisi',
         $eventId, $bracketCode, $tournamentType, $rrFormat,
         $hasThirdPlace, $participantCount, $bkStatus, $createdBy
+    );
+} elseif ($hasUiThemeColumn) {
+    $ins = $conn->prepare(
+        'INSERT INTO tournament_brackets
+           (event_id, bracket_code, tournament_type, round_robin_format,
+            has_third_place_match, participant_count, status, ui_theme)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    // Types: i  s  s  s  i  i  s  s   — 8 params
+    $ins->bind_param('isssiiss',
+        $eventId, $bracketCode, $tournamentType, $rrFormat,
+        $hasThirdPlace, $participantCount, $bkStatus, $uiTheme
     );
 } else {
     $ins = $conn->prepare(
