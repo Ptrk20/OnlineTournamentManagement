@@ -44,6 +44,22 @@ if ($chk->get_result()->num_rows === 0) {
 }
 $chk->close();
 
+// ── Delete team registrations first (FK is RESTRICT, not CASCADE) ─────────
+// This also cascades to team_players and tournament_bracket_participants.
+$delReg = $conn->prepare('DELETE FROM team_registrations WHERE event_id = ?');
+if (!$delReg) {
+    http_response_code(500);
+    die(json_encode(['success' => false, 'message' => 'Database error: ' . $conn->error]));
+}
+$delReg->bind_param('i', $id);
+if (!$delReg->execute()) {
+    $errMsg = $delReg->error;
+    $delReg->close();
+    http_response_code(500);
+    die(json_encode(['success' => false, 'message' => 'Failed to remove registrations: ' . $errMsg]));
+}
+$delReg->close();
+
 // ── Delete (cascade handles child rows) ───────────────────────────────────
 $stmt = $conn->prepare('DELETE FROM events WHERE id = ?');
 if (!$stmt) {

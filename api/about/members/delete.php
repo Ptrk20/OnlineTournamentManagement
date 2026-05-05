@@ -35,14 +35,16 @@ if ($id <= 0) {
     die(json_encode(['success' => false, 'message' => 'Invalid member ID.']));
 }
 
-// Check member exists
-$check = $conn->prepare("SELECT full_name FROM about_team_members WHERE id = ?");
+// Check member exists and get its display_order
+$check = $conn->prepare("SELECT display_order FROM about_team_members WHERE id = ?");
 $check->bind_param('i', $id);
 $check->execute();
-if ($check->get_result()->num_rows === 0) {
+$checkResult = $check->get_result();
+if ($checkResult->num_rows === 0) {
     http_response_code(404);
     die(json_encode(['success' => false, 'message' => 'Member not found.']));
 }
+$deletedOrder = (int)$checkResult->fetch_assoc()['display_order'];
 $check->close();
 
 // Delete the member
@@ -60,7 +62,16 @@ if (!$stmt->execute()) {
 
 $stmt->close();
 
-http_response_code(200);
+// Re-sequence display_order for rows that come after the deleted one
+$reseq = $conn->prepare(
+    "UPDATE about_team_members SET display_order = display_order - 1 WHERE display_order > ?"
+);
+if ($reseq) {
+    $reseq->bind_param('i', $deletedOrder);
+    $reseq->execute();
+    $reseq->close();
+}
+
 echo json_encode([
     'success' => true,
     'message' => 'Team member deleted successfully.'

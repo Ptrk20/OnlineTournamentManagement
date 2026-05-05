@@ -250,6 +250,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
+  position: relative;
 }
 
 .topbar-btn {
@@ -277,6 +278,122 @@
   background: #FACC15;
   border-radius: 50%;
   border: 2px solid #fff;
+}
+
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  background: #fff;
+  border: 1px solid #e8eaf0;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0,0,0,.18);
+  z-index: 9998;
+  overflow: hidden;
+}
+
+.notif-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef1f6;
+  background: #f8fbff;
+}
+
+.notif-panel-header h4 {
+  margin: 0;
+  font-size: .9rem;
+  color: #1f2937;
+}
+
+.notif-panel-header span {
+  font-size: .75rem;
+  color: #4b5563;
+  background: #e2e8f0;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.notif-summary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef1f6;
+}
+
+.notif-summary-pill {
+  text-decoration: none;
+  color: #1f2937;
+  background: #f4f7fb;
+  border: 1px solid #e5ebf3;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: .78rem;
+}
+
+.notif-summary-pill strong {
+  margin-right: 4px;
+  color: #2563eb;
+}
+
+.notif-section {
+  padding: 10px 12px;
+}
+
+.notif-section + .notif-section {
+  border-top: 1px solid #eef1f6;
+}
+
+.notif-section-title {
+  font-size: .72rem;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 8px;
+}
+
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notif-link {
+  display: block;
+  text-decoration: none;
+  color: #1f2937;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+
+.notif-link:hover {
+  background: #f3f7ff;
+}
+
+.notif-link strong {
+  display: block;
+  font-size: .8rem;
+  margin-bottom: 2px;
+}
+
+.notif-link span {
+  display: block;
+  font-size: .73rem;
+  color: #6b7280;
+}
+
+.notif-empty {
+  font-size: .78rem;
+  color: #9aa3af;
+  padding: 4px 2px;
 }
 
 .topbar-user {

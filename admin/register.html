@@ -10,7 +10,7 @@
 <body class="admin-body" id="adminRegistration">
 
   <aside class="sidebar" id="adminSidebar">
-    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">CvSU Bacoor Sports Hub</span><span class="sub">Admin Portal</span></div></div>
+    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">CvSU Bacoor Sports Hub</span><span class="sub">Team Registration</span></div></div>
     <nav class="sidebar-nav">
       <div class="nav-label">Main</div>
       <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
@@ -22,7 +22,7 @@
       <a href="manage-users.html"><span class="nav-icon">&#128101;</span> Manage Users</a>
       <div class="nav-label">Content</div>
       <a href="about.html"><span class="nav-icon">&#128203;</span> About Us</a>
-      <a href="contact.html"><span class="nav-icon">&#128140;</span> Contact Messages</a>
+      <a href="contact.html"><span class="nav-icon">&#128140;</span> Contact Messages <span class="nav-badge" id="msgBadge">0</span></a>
     </nav>
     <div class="sidebar-footer">
       <a href="../index.html"><span>&#127760;</span> View Website</a>
@@ -59,7 +59,7 @@
           <h3><span class="ch-icon">&#128221;</span> Team Registrations</h3>
           <div class="admin-card-actions">
             <input type="text" id="registrationSearch" placeholder="Search team or event..." style="padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.85rem;width:240px;" />
-            <button class="btn" id="manageCoursesBtn" style="background:#e8eaf6;color:#1a237e;font-size:.82rem;padding:8px 14px;">&#127891; Manage Courses</button>
+            <button class="btn" id="manageCoursesBtn" style="background:#e8eaf6;color:#1a237e;font-size:.82rem;padding:8px 14px;">&#127891; Manage Departments</button>
             <button class="btn btn-primary" id="addRegistrationBtn" style="font-size:.82rem;padding:8px 16px;">+ Fill Up Registration Form</button>
           </div>
         </div>
@@ -111,9 +111,9 @@
                 <input type="text" id="repStudentId" placeholder="Student ID" />
               </div>
               <div class="admin-form-group">
-                <label>Course <span style="color:red;">*</span></label>
+                <label>Department <span style="color:red;">*</span></label>
                 <select id="repCourse">
-                  <option value="">Loading courses...</option>
+                  <option value="">Loading departments...</option>
                 </select>
               </div>
               <div class="admin-form-group">
@@ -269,28 +269,28 @@
   <div class="modal-overlay" id="coursesModal">
     <div class="modal" style="max-width:620px;">
       <div class="modal-header">
-        <h3>Manage Courses</h3>
+        <h3>Manage Department</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="courseId" />
         <div class="admin-form-grid" style="grid-template-columns:1fr auto;align-items:end;">
           <div class="admin-form-group">
-            <label>Course Name <span style="color:red;">*</span></label>
+            <label>Department Name <span style="color:red;">*</span></label>
             <input type="text" id="courseName" placeholder="e.g. BSIT" maxlength="180" />
           </div>
           <div class="admin-form-group" style="display:flex;gap:8px;">
             <button type="button" class="btn" id="resetCourseBtn" style="background:#f0f2f5;color:#555;">Reset</button>
-            <button type="button" class="btn btn-primary" id="saveCourseBtn">Save Course</button>
+            <button type="button" class="btn btn-primary" id="saveCourseBtn">Save Department</button>
           </div>
         </div>
         <div class="admin-table-wrap" style="margin-top:16px;">
           <table class="admin-table">
             <thead>
-              <tr><th>#</th><th>Course Name</th><th>Actions</th></tr>
+              <tr><th>#</th><th>Department Name</th><th>Actions</th></tr>
             </thead>
             <tbody id="coursesTableBody">
-              <tr><td colspan="3" style="text-align:center;color:#aaa;padding:20px;">Loading courses...</td></tr>
+              <tr><td colspan="3" style="text-align:center;color:#aaa;padding:20px;">Loading departments...</td></tr>
             </tbody>
           </table>
         </div>

@@ -140,7 +140,7 @@
       </div>
 
       <!-- SMS Blaster -->
-      <div id="smsSection" style="margin-top:24px;">
+      <!-- <div id="smsSection" style="margin-top:24px;">
         <div class="admin-card">
           <div class="admin-card-header">
             <h3><span class="ch-icon">&#128241;</span> SMS Blaster</h3>
@@ -179,7 +179,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </div> -->
 
     </main>
   </div>
@@ -189,11 +189,7 @@
   <script src="../js/admin.js"></script>
   <script src="../js/sms-blaster.js"></script>
   <script>
-    // Update unread messages badge
     document.addEventListener('DOMContentLoaded', () => {
-      const msgs  = DataStore.getMessages().filter(m => !m.read).length;
-      const badge = document.getElementById('msgBadge');
-      if (badge) badge.textContent = msgs;
       // Show/hide manual recipients based on mode
       const modeEl = document.getElementById('smsMode');
       const recpGrp = document.getElementById('smsRecipientsGroup');

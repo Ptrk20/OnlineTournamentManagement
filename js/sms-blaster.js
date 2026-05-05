@@ -1,6 +1,6 @@
 /**
  * Online Tournament Management
- * sms-blaster.js — iTexMo SMS integration
+ * sms-blaster.js — SMS integration helpers
  *
  * iTexMo API Docs: https://www.itexmo.com/php-api/
  * Replace API credentials with your actual iTexMo account values.
@@ -9,30 +9,13 @@
 'use strict';
 
 /* =============================================
-   iTexMo Configuration
-   Store credentials server-side in production.
-   Never expose API keys in client-side code.
-   This module is intended to be called from a
-   server-side script (Node.js / PHP proxy).
-   ============================================= */
-const ITEXMO_CONFIG = {
-  API_URL:  'https://api.itexmo.com/api/broadcast',
-  EMAIL:    'your_itexmo_email@example.com',   // Replace with real iTexMo account email
-  API_CODE: 'YOUR_ITEXMO_API_CODE',            // Replace with real API code
-};
-
-/* =============================================
    SMS BLASTER MODULE
    ============================================= */
 const SMSBlaster = (() => {
 
   const LOG_KEY = 'otm_sms_logs';
 
-  // ── Send SMS via iTexMo ───────────────────────
-  // In production: call your backend proxy which
-  // holds credentials and calls iTexMo API.
-  // Direct client calls expose API keys — use a
-  // server-side route like POST /api/sms/send.
+  // ── Send SMS (demo/local) ─────────────────────
   async function send({ recipients, message, senderId = '' }) {
 
     if (!recipients || !recipients.length) {
@@ -57,22 +40,7 @@ const SMSBlaster = (() => {
       return { ok: false, error: 'No valid PH phone numbers found.' };
     }
 
-    const payload = {
-      Email:   ITEXMO_CONFIG.EMAIL,
-      ApiCode: ITEXMO_CONFIG.API_CODE,
-      Recipients: sanitized,
-      Message: message.trim(),
-      ...(senderId && { SenderId: senderId }),
-    };
-
     try {
-      // In real deployment, call your backend proxy:
-      // const res = await fetch('/api/sms/send', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ recipients: sanitized, message: message.trim() }),
-      // });
-
       // Demo mode: log locally and simulate success
       console.info('[SMSBlaster] Demo mode – would send to:', sanitized);
       console.info('[SMSBlaster] Message:', message);
@@ -84,6 +52,63 @@ const SMSBlaster = (() => {
       console.error('[SMSBlaster] Error:', err);
       logSMS({ recipients: sanitized, message, status: 'Failed', date: new Date().toISOString() });
       return { ok: false, error: 'SMS delivery failed. Check network or API configuration.' };
+    }
+  }
+
+  // ── Send via Android Gateway backend ─────────
+  async function sendViaAndroidGateway({ message, gatewayUrl, gatewayToken = '', recipients = [] }) {
+    if (!message || !message.trim()) {
+      return { ok: false, error: 'Message cannot be empty.' };
+    }
+
+    if (!gatewayUrl || !gatewayUrl.trim()) {
+      return { ok: false, error: 'Gateway URL is required.' };
+    }
+
+    try {
+      const res = await fetch('../api/sms/android-blast.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: message.trim(),
+          gateway_url: gatewayUrl.trim(),
+          gateway_token: gatewayToken.trim(),
+          recipients
+        })
+      });
+
+      const raw = await res.text();
+      let data = null;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        const clean = raw
+          .replace(/<br\s*\/?>/gi, ' ')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return { ok: false, error: clean || 'Server returned a non-JSON response.' };
+      }
+
+      if (!res.ok || !data.success) {
+        return { ok: false, error: data.message || 'Android gateway request failed.' };
+      }
+
+      logSMS({
+        recipients: data.recipients || recipients,
+        message: message.trim(),
+        status: `Sent (Android Gateway: ${data.sent || 0})`,
+        date: new Date().toISOString()
+      });
+
+      return {
+        ok: true,
+        sent: data.sent || 0,
+        failed: data.failed || 0,
+        message: data.message || `SMS sent to ${data.sent || 0} recipient(s).`
+      };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Android gateway request failed.' };
     }
   }
 
@@ -120,7 +145,7 @@ const SMSBlaster = (() => {
 
   function clearLogs() { localStorage.removeItem(LOG_KEY); }
 
-  return { send, blastToParticipants, blastToEvent, getLogs, clearLogs };
+  return { send, sendViaAndroidGateway, blastToParticipants, blastToEvent, getLogs, clearLogs };
 })();
 
 /* =============================================
@@ -150,9 +175,11 @@ document.addEventListener('DOMContentLoaded', () => {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const rawNumbers = (form.querySelector('#smsRecipients').value || '').trim();
-    const message    = (form.querySelector('#smsMessage').value     || '').trim();
+    const rawNumbers = (form.querySelector('#smsRecipients')?.value || '').trim();
+    const message    = (form.querySelector('#smsMessage')?.value    || '').trim();
     const mode       = (form.querySelector('#smsMode')?.value       || 'manual');
+    const gatewayUrl = (form.querySelector('#smsGatewayUrl')?.value || '').trim();
+    const gatewayToken = (form.querySelector('#smsGatewayToken')?.value || '').trim();
     const resultBox  = document.getElementById('smsResult');
     const btn        = form.querySelector('[type="submit"]');
 
@@ -168,11 +195,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (!message) { showSMSResult(resultBox, false, 'Message is required.'); return; }
+    if (document.getElementById('adminAnnouncements') && !gatewayUrl) {
+      showSMSResult(resultBox, false, 'Gateway URL is required for Android gateway.');
+      return;
+    }
 
     btn.disabled    = true;
     btn.textContent = 'Sending…';
 
-    const result = await SMSBlaster.send({ recipients, message });
+    const result = document.getElementById('adminAnnouncements')
+      ? await SMSBlaster.sendViaAndroidGateway({
+          message,
+          gatewayUrl,
+          gatewayToken,
+          recipients: mode === 'all' ? [] : recipients
+        })
+      : await SMSBlaster.send({ recipients, message });
 
     showSMSResult(resultBox, result.ok, result.ok ? result.message : result.error);
 
@@ -183,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     btn.disabled    = false;
-    btn.textContent = '📤 Send SMS';
+    btn.textContent = document.getElementById('adminAnnouncements') ? '📤 Blast to All Users' : '📤 Send SMS';
   });
 });
 

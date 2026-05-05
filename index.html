@@ -45,38 +45,37 @@
           <!-- Header -->
           <div class="standings-card-header">
             <span style="font-weight:800;font-size:.95rem;color:#fff;letter-spacing:.5px;">&#127942; MEDAL STANDINGS</span>
-            <span id="liveIndicator" class="live-indicator">
+            <!-- <span id="liveIndicator" class="live-indicator">
               <span style="width:7px;height:7px;background:#4cff72;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block;"></span>
               LIVE
-            </span>
+            </span> -->
           </div>
 
-          <!-- Sports Icons Row -->
-          <div class="standings-icons-row">
-            <div style="text-align:left;">Course</div>
-            <div title="Volleyball">&#127952;</div>
-            <div title="Basketball">&#127936;</div>
-            <div title="Futsal">&#9917;</div>
-            <div title="Badminton">&#127992;</div>
-            <div>&#129351;</div>
-            <div>&#129352;</div>
-            <div>&#129353;</div>
+          <!-- Year Filter -->
+          <div class="standings-year-bar">
+            <label for="standingsYear">Year:</label>
+            <select id="standingsYear">
+              <option value="">Loading...</option>
+            </select>
           </div>
 
-          <!-- Sport Labels -->
-          <div class="standings-labels-row">
-            <div></div>
-            <div>VOL</div>
-            <div>BBL</div>
-            <div>FUT</div>
-            <div>BAD</div>
-            <div class="label-gold">G</div>
-            <div class="label-silver">S</div>
-            <div class="label-bronze">B</div>
+          <!-- Standings Table -->
+          <div class="standings-table-wrap">
+            <table class="standings-table">
+              <thead>
+                <tr>
+                  <th>Sport</th>
+                  <th>Category</th>
+                  <th><span style="color:gold;">&#129351;</span> Gold</th>
+                  <th><span style="color:#ccc;">&#129352;</span> Silver</th>
+                  <th><span style="color:#cd7f32;">&#129353;</span> Bronze</th>
+                </tr>
+              </thead>
+              <tbody id="standingsBody">
+                <tr><td colspan="5" class="stn-placeholder">Loading...</td></tr>
+              </tbody>
+            </table>
           </div>
-
-          <!-- Standings Rows -->
-          <div id="standingsBody"></div>
 
           <!-- Footer -->
           <div class="standings-footer">
@@ -198,15 +197,6 @@
                     <li><a href="contact.html">&rsaquo; Contact Us</a></li>
                 </ul>
             </div>
-          <div class="footer-col">
-            <h4>Events</h4>
-            <ul>
-              <li><a href="events.html">&rsaquo; Basketball</a></li>
-              <li><a href="events.html">&rsaquo; Volleyball</a></li>
-              <li><a href="events.html">&rsaquo; Footsal</a></li>
-              <li><a href="events.html">&rsaquo; Badminton</a></li>
-            </ul>
-          </div>
           <div class="footer-col">
             <h4>Contact</h4>
             <ul>

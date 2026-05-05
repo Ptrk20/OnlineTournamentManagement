@@ -82,6 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── Notification badge + popup ───────────────
+  initAdminNotifications();
+
   // ── Init page-specific modules ────────────────
   initDashboard();
   initRegistrationManager();
@@ -156,6 +159,130 @@ function showToast(message, type = 'success') {
 
 function adminToast(message, type = 'success') {
   showToast(message, type);
+}
+
+/* =============================================
+   ADMIN NOTIFICATIONS (all admin pages)
+   ============================================= */
+function initAdminNotifications() {
+  const msgBadge  = document.getElementById('msgBadge');
+  const notifBtn  = document.querySelector('.topbar-btn[title="Notifications"]');
+  const topbarBox = document.querySelector('.topbar-right');
+
+  if (!msgBadge && !notifBtn) return;
+
+  let panel = document.getElementById('adminNotifPanel');
+  if (!panel && notifBtn && topbarBox) {
+    panel = document.createElement('div');
+    panel.id = 'adminNotifPanel';
+    panel.className = 'notif-panel';
+    panel.style.display = 'none';
+    topbarBox.appendChild(panel);
+  }
+
+  const renderPanel = (pendingRegistrations, unreadMessages, regItems, msgItems) => {
+    if (!panel) return;
+
+    const regHtml = regItems.length
+      ? regItems.map((r) => `
+          <li>
+            <a href="register.html" class="notif-link">
+              <strong>${escapeAdminHTML(r.team_name || 'Team')}</strong>
+              <span>${escapeAdminHTML(r.event_name || 'Event')} • ${escapeAdminHTML(r.category || '—')}</span>
+            </a>
+          </li>
+        `).join('')
+      : '<li class="notif-empty">No pending registrations.</li>';
+
+    const msgHtml = msgItems.length
+      ? msgItems.map((m) => `
+          <li>
+            <a href="contact.html" class="notif-link">
+              <strong>${escapeAdminHTML(m.full_name || 'Sender')}</strong>
+              <span>${escapeAdminHTML(m.subject || 'No subject')}</span>
+            </a>
+          </li>
+        `).join('')
+      : '<li class="notif-empty">No unread messages.</li>';
+
+    panel.innerHTML = `
+      <div class="notif-panel-header">
+        <h4>Notifications</h4>
+        <span>${pendingRegistrations + unreadMessages} new</span>
+      </div>
+      <div class="notif-summary-row">
+        <a href="register.html" class="notif-summary-pill"><strong>${pendingRegistrations}</strong> Registrations to review</a>
+        <a href="contact.html" class="notif-summary-pill"><strong>${unreadMessages}</strong> Unread messages</a>
+      </div>
+      <div class="notif-section">
+        <div class="notif-section-title">Pending Registrations</div>
+        <ul class="notif-list">${regHtml}</ul>
+      </div>
+      <div class="notif-section">
+        <div class="notif-section-title">Unread Messages</div>
+        <ul class="notif-list">${msgHtml}</ul>
+      </div>
+    `;
+  };
+
+  const loadNotifications = async () => {
+    let pendingRegistrations = 0;
+    let unreadMessages = 0;
+    let pendingItems = [];
+    let unreadItems = [];
+
+    try {
+      const [regRes, msgRes] = await Promise.all([
+        fetch('../api/registrations/read.php').then(parseApiJson).catch(() => null),
+        fetch('../api/contact/read-messages.php').then(parseApiJson).catch(() => null)
+      ]);
+
+      if (regRes && regRes.success && Array.isArray(regRes.data)) {
+        pendingItems = regRes.data.filter((r) => String(r.status || '').toLowerCase() === 'pending');
+        pendingRegistrations = pendingItems.length;
+        pendingItems = pendingItems.slice(0, 3);
+      }
+
+      if (msgRes && msgRes.success && Array.isArray(msgRes.data)) {
+        unreadItems = msgRes.data.filter((m) => !m.is_read);
+        unreadMessages = Number(msgRes.unread || unreadItems.length) || 0;
+        unreadItems = unreadItems.slice(0, 3);
+      }
+    } catch {
+      // Quietly keep defaults (0) if API endpoints are temporarily unavailable.
+    }
+
+    if (msgBadge) {
+      msgBadge.textContent = String(unreadMessages);
+      msgBadge.style.display = unreadMessages > 0 ? 'inline-block' : 'none';
+    }
+
+    if (notifBtn) {
+      const dot = notifBtn.querySelector('.notif-dot');
+      const hasNew = (pendingRegistrations + unreadMessages) > 0;
+      if (dot) dot.style.display = hasNew ? 'block' : 'none';
+      notifBtn.setAttribute(
+        'aria-label',
+        `Notifications: ${pendingRegistrations} pending registrations, ${unreadMessages} unread messages`
+      );
+    }
+
+    renderPanel(pendingRegistrations, unreadMessages, pendingItems, unreadItems);
+  };
+
+  if (notifBtn && panel) {
+    notifBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = panel.style.display === 'block';
+      panel.style.display = isOpen ? 'none' : 'block';
+    });
+
+    panel.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => { panel.style.display = 'none'; });
+  }
+
+  loadNotifications();
+  setInterval(loadNotifications, 30000);
 }
 
 /* =============================================

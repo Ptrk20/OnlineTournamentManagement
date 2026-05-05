@@ -2767,7 +2767,115 @@ h1, h2, h3, h4 { line-height: 1.2; }
   text-align: left;
 }
 
-#standingsBody { padding: 4px 0; }
+.standings-year-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 4px;
+  font-size: .72rem;
+  color: rgba(255,255,255,.55);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.standings-year-bar select {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 6px;
+  color: #fff;
+  font-size: .74rem;
+  padding: 3px 8px;
+  outline: none;
+  cursor: pointer;
+}
+
+.standings-year-bar select:focus {
+  border-color: rgba(255,255,255,.4);
+}
+
+.standings-year-bar select option {
+  background: #1e293b;
+  color: #fff;
+}
+
+.standings-table-wrap {
+  overflow: visible;
+  max-height: none;
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .78rem;
+}
+
+.standings-table thead tr {
+  background: rgba(0, 0, 0, .35);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.standings-table th {
+  padding: 7px 10px;
+  color: rgba(255,255,255,.6);
+  font-size: .64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  white-space: nowrap;
+}
+
+.standings-table th:first-child,
+.standings-table th:nth-child(2) { text-align: left; }
+
+.standings-table td {
+  padding: 8px 10px;
+  color: rgba(255,255,255,.88);
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  font-size: .78rem;
+}
+
+.standings-table tbody tr:last-child td { border-bottom: none; }
+.standings-table tbody tr:hover td { background: rgba(255,255,255,.05); }
+
+.standings-table td.stn-sport {
+  font-weight: 800;
+  font-size: .8rem;
+  text-align: left;
+  background: rgba(0,0,0,.18);
+  vertical-align: middle;
+}
+
+.stn-sport-icon {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 1rem;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.standings-table td.stn-category {
+  text-align: left;
+  color: rgba(255,255,255,.65);
+  font-size: .74rem;
+}
+
+.standings-table td.stn-gold   { color: gold;    font-weight: 700; }
+.standings-table td.stn-silver { color: #ccc;    font-weight: 700; }
+.standings-table td.stn-bronze { color: #cd7f32; font-weight: 700; }
+
+.standings-table td.stn-placeholder {
+  text-align: center;
+  padding: 18px;
+  color: rgba(255,255,255,.5);
+  font-style: italic;
+  font-size: .76rem;
+}
 
 .standings-footer {
   padding: 8px 14px;

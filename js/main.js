@@ -1311,104 +1311,262 @@ const Auth = {
 })();
 
 /* =============================================
-   13. CAMPUS SPORTSFEST — LIVE MEDAL STANDINGS
-       Sports: Volleyball, Basketball, Futsal, Badminton
-       Courses: IT, CS, Crim, HRM, BSM, BSEDUC, BSPSYCH
-       Result values: 'G'=Gold, 'S'=Silver, 'B'=Bronze, '-'=No medal
+   13. MEDAL STANDINGS — DB-synced per sport+category
+       Columns: Sport | Category | Gold | Silver | Bronze
    ============================================= */
 (function initStandings() {
-  const STANDINGS_KEY = 'otm_sportsfest_standings';
+  var tbody    = document.getElementById('standingsBody');
+  var ts       = document.getElementById('lastUpdated');
+  var indicator = document.getElementById('liveIndicator');
+  var yearSel  = document.getElementById('standingsYear');
+  if (!tbody) return;
 
-  const defaultStandings = [
-    { course: 'IT',      vol: 'G', bbl: 'S', fut: '-', bad: 'G',  g: 2, s: 1, b: 0 },
-    { course: 'CS',      vol: 'S', bbl: 'G', fut: 'B', bad: '-',  g: 1, s: 1, b: 1 },
-    { course: 'Crim',    vol: '-', bbl: 'B', fut: 'G', bad: 'S',  g: 1, s: 1, b: 1 },
-    { course: 'HRM',     vol: 'B', bbl: '-', fut: 'S', bad: 'B',  g: 0, s: 1, b: 2 },
-    { course: 'BSM',     vol: '-', bbl: '-', fut: '-', bad: 'B',  g: 0, s: 0, b: 1 },
-    { course: 'BSEDUC',  vol: '-', bbl: '-', fut: '-', bad: '-',  g: 0, s: 0, b: 0 },
-    { course: 'BSPSYCH', vol: '-', bbl: '-', fut: '-', bad: '-',  g: 0, s: 0, b: 0 },
-  ];
+  var allEvents = [];
+  var selectedYear = '';
 
-  function getStandings() {
-    try {
-      return JSON.parse(localStorage.getItem(STANDINGS_KEY)) || defaultStandings;
-    } catch { return defaultStandings; }
-  }
+  function populateYears(events) {
+    if (!yearSel) return;
+    var years = [];
+    events.forEach(function (ev) {
+      var d = ev.event_start_date || ev.created_at || '';
+      var y = d ? new Date(d).getFullYear() : null;
+      if (y && !isNaN(y) && years.indexOf(y) === -1) years.push(y);
+    });
+    years.sort(function (a, b) { return b - a; });
+    if (!years.length) {
+      selectedYear = '';
+      yearSel.innerHTML = '<option value="">No year</option>';
+      return;
+    }
 
-  function sortStandings(data) {
-    return [...data].sort((a, b) =>
-      b.g !== a.g ? b.g - a.g :
-      b.s !== a.s ? b.s - a.s :
-      b.b - a.b
-    );
-  }
+    // No 'All' option: default to latest year if current selection is missing.
+    if (!selectedYear || years.indexOf(Number(selectedYear)) === -1) {
+      selectedYear = String(years[0]);
+    }
 
-  function medalTag(val) {
-    if (val === 'G') return '<span class="sport-result" style="background:rgba(255,215,0,.2);color:gold;">G</span>';
-    if (val === 'S') return '<span class="sport-result" style="background:rgba(200,200,200,.15);color:#ddd;">S</span>';
-    if (val === 'B') return '<span class="sport-result" style="background:rgba(205,127,50,.2);color:#cd7f32;">B</span>';
-    return '<span class="sport-result" style="color:rgba(255,255,255,.2);">&#8212;</span>';
-  }
-
-  function rankBadge(rank) {
-    const styles = {
-      1: 'background:gold;color:#333;',
-      2: 'background:#aaa;color:#111;',
-      3: 'background:#cd7f32;color:#fff;',
-    };
-    const style = styles[rank] || 'background:rgba(255,255,255,.15);color:#fff;';
-    return '<span class="rank-badge" style="' + style + '">' + rank + '</span>';
-  }
-
-  function rowClass(rank) {
-    if (rank === 1) return 'standing-row top-1';
-    if (rank === 2) return 'standing-row top-2';
-    if (rank === 3) return 'standing-row top-3';
-    return 'standing-row';
-  }
-
-  function renderStandings() {
-    const body = document.getElementById('standingsBody');
-    if (!body) return;
-
-    const sorted = sortStandings(getStandings());
-
-    body.innerHTML = sorted.map(function (row, i) {
-      const rank = i + 1;
-      return '<div class="' + rowClass(rank) + '">' +
-        '<div style="display:flex;align-items:center;color:#fff;font-weight:700;">' +
-          rankBadge(rank) +
-          '<span style="font-size:.85rem;">' + escapeHTML(row.course) + '</span>' +
-        '</div>' +
-        '<div>' + medalTag(row.vol) + '</div>' +
-        '<div>' + medalTag(row.bbl) + '</div>' +
-        '<div>' + medalTag(row.fut) + '</div>' +
-        '<div>' + medalTag(row.bad) + '</div>' +
-        '<div class="medal-count medal-gold">' + row.g + '</div>' +
-        '<div class="medal-count medal-silver">' + row.s + '</div>' +
-        '<div class="medal-count medal-bronze">' + row.b + '</div>' +
-      '</div>';
+    yearSel.innerHTML = years.map(function (y) {
+      return '<option value="' + y + '"' + (String(y) === selectedYear ? ' selected' : '') + '>' + y + '</option>';
     }).join('');
+  }
 
-    const ts = document.getElementById('lastUpdated');
+  function filterByYear(events) {
+    if (!selectedYear) return events;
+    return events.filter(function (ev) {
+      var d = ev.event_start_date || ev.created_at || '';
+      if (!d) return false;
+      return String(new Date(d).getFullYear()) === selectedYear;
+    });
+  }
+
+  function setIndicator(hasOngoing) {
+    if (!indicator) return;
+    if (hasOngoing) {
+      indicator.innerHTML = '<span style="width:7px;height:7px;background:#4cff72;border-radius:50%;animation:pulse 1.2s infinite;display:inline-block;"></span> LIVE';
+      indicator.style.background = 'rgba(0,0,0,.25)';
+    } else {
+      indicator.innerHTML = '<span style="width:7px;height:7px;background:#94a3b8;border-radius:50%;display:inline-block;"></span> STANDINGS';
+      indicator.style.background = 'rgba(0,0,0,.25)';
+    }
+  }
+
+  function computeMedals(bracket) {
+    var teams   = Array.isArray(bracket.teams)   ? bracket.teams   : [];
+    var matches = Array.isArray(bracket.matches) ? bracket.matches : [];
+    var teamMap = {};
+    teams.forEach(function (t) { teamMap[t.id] = t.name || 'Team'; });
+
+    if (!matches.length || !teams.length) {
+      return { gold: '-', silver: '-', bronze: '-' };
+    }
+
+    if (String(bracket.tournament_type || '').toLowerCase().includes('round')) {
+      // Round robin: compute wins-based standings
+      var stats = {};
+      teams.forEach(function (t) {
+        stats[t.id] = { wins: 0, losses: 0, forPts: 0, againstPts: 0 };
+      });
+      matches.forEach(function (m) {
+        if (!m.winner_team_id) return;
+        var t1 = m.team1 && m.team1.id;
+        var t2 = m.team2 && m.team2.id;
+        if (!t1 || !t2 || !stats[t1] || !stats[t2]) return;
+        var s1 = Number(m.score1 || 0), s2 = Number(m.score2 || 0);
+        stats[t1].forPts += s1; stats[t1].againstPts += s2;
+        stats[t2].forPts += s2; stats[t2].againstPts += s1;
+        if (Number(m.winner_team_id) === Number(t1)) {
+          stats[t1].wins++; stats[t2].losses++;
+        } else {
+          stats[t2].wins++; stats[t1].losses++;
+        }
+      });
+      var sorted = teams.slice().sort(function (a, b) {
+        var sa = stats[a.id], sb = stats[b.id];
+        var da = sa.forPts - sa.againstPts, db = sb.forPts - sb.againstPts;
+        return sb.wins - sa.wins || db - da || sb.forPts - sa.forPts;
+      });
+      return {
+        gold:   sorted[0] ? (teamMap[sorted[0].id] || '-') : '-',
+        silver: sorted[1] ? (teamMap[sorted[1].id] || '-') : '-',
+        bronze: sorted[2] ? (teamMap[sorted[2].id] || '-') : '-'
+      };
+    }
+
+    // Elimination: find the Final match and bronze match
+    var withWinner = matches.filter(function (m) { return !!m.winner_team_id; });
+    if (!withWinner.length) return { gold: '-', silver: '-', bronze: '-' };
+
+    // Final = highest round in main bracket stage
+    var mainWithWinner = withWinner.filter(function (m) {
+      var stage = String(m.bracket_stage || '').toLowerCase();
+      return !stage || stage === 'main' || stage === 'upper';
+    });
+    if (!mainWithWinner.length) mainWithWinner = withWinner;
+
+    var maxRound = 0;
+    mainWithWinner.forEach(function (m) { if ((m.round || 0) > maxRound) maxRound = m.round || 0; });
+    var finalMatch = mainWithWinner.filter(function (m) { return (m.round || 0) === maxRound; })[0];
+
+    var goldId = finalMatch ? Number(finalMatch.winner_team_id) : 0;
+    var gold   = goldId ? (teamMap[goldId] || '-') : '-';
+
+    var silver = '-';
+    if (finalMatch) {
+      var t1id = finalMatch.team1 && Number(finalMatch.team1.id);
+      var t2id = finalMatch.team2 && Number(finalMatch.team2.id);
+      var silverId = goldId === t1id ? t2id : t1id;
+      silver = silverId ? (teamMap[silverId] || '-') : '-';
+    }
+
+    // Bronze = winner of 3rd place / bronze match
+    var bronzeMatch = matches.find(function (m) {
+      var label = String(m.label || m.bracket_stage || '').toLowerCase();
+      return label.includes('3rd') || label.includes('third') || label.includes('bronze') || label.includes('place');
+    });
+    var bronze = '-';
+    if (bronzeMatch && bronzeMatch.winner_team_id) {
+      bronze = teamMap[Number(bronzeMatch.winner_team_id)] || '-';
+    }
+
+    return { gold: gold, silver: silver, bronze: bronze };
+  }
+
+  function sportIcon(name) {
+    var n = String(name || '').toLowerCase();
+    if (n.includes('basketball'))  return '\uD83C\uDFC0'; // 🏀
+    if (n.includes('volleyball'))  return '\uD83C\uDFD0'; // 🏐
+    if (n.includes('futsal') || n.includes('football') || n.includes('soccer')) return '\u26BD'; // ⚽
+    if (n.includes('badminton'))   return '\uD83C\uDFF8'; // 🏸
+    if (n.includes('tennis'))      return '\uD83C\uDFBE'; // 🎾
+    if (n.includes('swimming'))    return '\uD83C\uDFCA'; // 🏊
+    if (n.includes('track') || n.includes('run') || n.includes('athlet')) return '\uD83C\uDFC3'; // 🏃
+    if (n.includes('chess'))       return '\u265E'; // ♞
+    if (n.includes('table tennis') || n.includes('pingpong')) return '\uD83C\uDFD3'; // 🏓
+    if (n.includes('baseball') || n.includes('softball')) return '\u26BE'; // ⚾
+    if (n.includes('boxing'))      return '\uD83E\uDD4A'; // 🥊
+    if (n.includes('archery'))     return '\uD83C\uDFF9'; // 🏹
+    return '\uD83C\uDFC5'; // 🏅 default
+  }
+
+  async function loadStandings() {
+    try {
+      var evRes  = await fetch('api/events/read.php');
+      var evJson = await parsePublicApiJson(evRes);
+      allEvents  = (evJson.success && Array.isArray(evJson.data)) ? evJson.data : [];
+      populateYears(allEvents);
+      await renderFromCache();
+    } catch (err) {
+      console.error('Medal standings error:', err);
+      tbody.innerHTML = '<tr><td colspan="5" class="stn-placeholder">Unable to load standings.</td></tr>';
+    }
+  }
+
+  window.updateStandings = function () { loadStandings(); };
+
+  function bindYearChange() {
+    if (!yearSel) return;
+    yearSel.addEventListener('change', function () {
+      selectedYear = yearSel.value;
+      renderFromCache();
+    });
+  }
+
+  async function renderFromCache() {
+    var yearFiltered = filterByYear(allEvents);
+    var relevant = yearFiltered.filter(function (ev) {
+      var s = String(ev.status || '').toLowerCase();
+      return s === 'ongoing' || s === 'completed';
+    });
+    var hasOngoing = yearFiltered.some(function (ev) {
+      return String(ev.status || '').toLowerCase() === 'ongoing';
+    });
+    setIndicator(hasOngoing);
+
+    if (!relevant.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="stn-placeholder">No completed or ongoing events' +
+        (selectedYear ? ' in ' + selectedYear : '') + '.</td></tr>';
+      if (ts) ts.textContent = '--';
+      return;
+    }
+
+    var bracketResults = await Promise.all(relevant.map(function (ev) {
+      return fetch('api/brackets/read.php?event_id=' + encodeURIComponent(String(ev.id)))
+        .then(function (r) { return parsePublicApiJson(r); })
+        .catch(function () { return null; });
+    }));
+
+    var rows = [];
+    relevant.forEach(function (ev, i) {
+      var bJson  = bracketResults[i];
+      var bData  = bJson && bJson.success && bJson.data ? bJson.data : null;
+      var medals = bData ? computeMedals(bData) : { gold: '-', silver: '-', bronze: '-' };
+      rows.push({
+        sport:    escapeHTML(ev.sport_name || 'Unknown'),
+        category: escapeHTML(ev.category  || 'General'),
+        gold:     escapeHTML(medals.gold),
+        silver:   escapeHTML(medals.silver),
+        bronze:   escapeHTML(medals.bronze)
+      });
+    });
+
+    rows.sort(function (a, b) {
+      return a.sport.localeCompare(b.sport) || a.category.localeCompare(b.category);
+    });
+
+    var html = '';
+    var i = 0;
+    while (i < rows.length) {
+      var sport = rows[i].sport;
+      var span  = 0;
+      for (var j = i; j < rows.length && rows[j].sport === sport; j++) span++;
+      for (var k = 0; k < span; k++) {
+        var r = rows[i + k];
+        html += '<tr>';
+        if (k === 0) {
+          html += '<td class="stn-sport" rowspan="' + span + '"><span class="stn-sport-icon" aria-hidden="true">' + sportIcon(r.sport) + '</span>' + r.sport + '</td>';
+        }
+        html +=
+          '<td class="stn-category">' + r.category + '</td>' +
+          '<td class="stn-gold">'   + r.gold   + '</td>' +
+          '<td class="stn-silver">' + r.silver + '</td>' +
+          '<td class="stn-bronze">' + r.bronze + '</td>' +
+        '</tr>';
+      }
+      i += span;
+    }
+    tbody.innerHTML = html;
     if (ts) ts.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  // Expose for admin use: window.updateStandings(newDataArray)
-  window.updateStandings = function (data) {
-    localStorage.setItem(STANDINGS_KEY, JSON.stringify(data));
-    renderStandings();
-  };
-
-  // Run on DOM ready; auto-refresh every 30 seconds
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
-      renderStandings();
-      setInterval(renderStandings, 30000);
+      bindYearChange();
+      loadStandings();
+      setInterval(loadStandings, 30000);
     });
   } else {
-    renderStandings();
-    setInterval(renderStandings, 30000);
+    bindYearChange();
+    loadStandings();
+    setInterval(loadStandings, 30000);
   }
 })();
 
