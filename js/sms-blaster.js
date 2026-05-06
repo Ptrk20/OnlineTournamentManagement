@@ -1,9 +1,6 @@
 /**
  * Online Tournament Management
  * sms-blaster.js — SMS integration helpers
- *
- * iTexMo API Docs: https://www.itexmo.com/php-api/
- * Replace API credentials with your actual iTexMo account values.
  */
 
 'use strict';
@@ -55,26 +52,26 @@ const SMSBlaster = (() => {
     }
   }
 
-  // ── Send via Android Gateway backend ─────────
-  async function sendViaAndroidGateway({ message, gatewayUrl, gatewayToken = '', recipients = [] }) {
+  // ── Send via PhilSMS backend ─────────────────
+  async function sendViaPhilSMS({ message, apiUrl = '', apiToken = '', senderId = '', recipients = [], recipientDetails = [] }) {
     if (!message || !message.trim()) {
       return { ok: false, error: 'Message cannot be empty.' };
     }
 
-    if (!gatewayUrl || !gatewayUrl.trim()) {
-      return { ok: false, error: 'Gateway URL is required.' };
-    }
-
     try {
-      const res = await fetch('../api/sms/android-blast.php', {
+      const payload = {
+        message: message.trim(),
+        api_url: apiUrl.trim(),
+        api_token: apiToken.trim(),
+        sender_id: senderId.trim(),
+        recipients,
+        recipient_details: recipientDetails
+      };
+
+      const res = await fetch('../api/sms/philsms-blast.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: message.trim(),
-          gateway_url: gatewayUrl.trim(),
-          gateway_token: gatewayToken.trim(),
-          recipients
-        })
+        body: JSON.stringify(payload)
       });
 
       const raw = await res.text();
@@ -90,14 +87,25 @@ const SMSBlaster = (() => {
         return { ok: false, error: clean || 'Server returned a non-JSON response.' };
       }
 
+      // Log request and response for debugging
+      console.log('[SMS-DEBUG] Request Payload:', JSON.stringify(payload, null, 2));
+      console.log('[SMS-DEBUG] Response:', JSON.stringify(data, null, 2));
+
       if (!res.ok || !data.success) {
-        return { ok: false, error: data.message || 'Android gateway request failed.' };
+        let details = '';
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          const first = data.errors[0];
+          const codePart = first.http_code ? `HTTP ${first.http_code}` : '';
+          const errPart = first.error || first.response || '';
+          details = [codePart, errPart].filter(Boolean).join(' - ');
+        }
+        return { ok: false, error: details ? `${data.message || 'PhilSMS request failed.'} (${details})` : (data.message || 'PhilSMS request failed.') };
       }
 
       logSMS({
         recipients: data.recipients || recipients,
         message: message.trim(),
-        status: `Sent (Android Gateway: ${data.sent || 0})`,
+        status: `Sent (PhilSMS: ${data.sent || 0})`,
         date: new Date().toISOString()
       });
 
@@ -105,10 +113,12 @@ const SMSBlaster = (() => {
         ok: true,
         sent: data.sent || 0,
         failed: data.failed || 0,
-        message: data.message || `SMS sent to ${data.sent || 0} recipient(s).`
+        blastId: data.blast_id || 0,
+        message: data.message || `SMS sent to ${data.sent || 0} recipient(s).`,
+        debug: data.debug || null
       };
     } catch (err) {
-      return { ok: false, error: err.message || 'Android gateway request failed.' };
+      return { ok: false, error: err.message || 'PhilSMS request failed.' };
     }
   }
 
@@ -145,7 +155,7 @@ const SMSBlaster = (() => {
 
   function clearLogs() { localStorage.removeItem(LOG_KEY); }
 
-  return { send, sendViaAndroidGateway, blastToParticipants, blastToEvent, getLogs, clearLogs };
+  return { send, sendViaPhilSMS, blastToParticipants, blastToEvent, getLogs, clearLogs };
 })();
 
 /* =============================================
@@ -156,6 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const charEl  = document.getElementById('smsCharCount');
   const msgArea = document.getElementById('smsMessage');
   const logList = document.getElementById('smsLogList');
+  const isAdminAnnouncements = !!document.getElementById('adminAnnouncements');
+  const recipientsChecklist = document.getElementById('smsRecipientsChecklist');
+  const selectAllCheckbox = document.getElementById('smsSelectAllRecipients');
+  const settingsBtn = document.getElementById('smsSettingsBtn');
+  const saveSettingsBtn = document.getElementById('saveSmsSettingsBtn');
+  const selectedCountEl = document.getElementById('smsSelectedCount');
+  const totalCountEl = document.getElementById('smsTotalCount');
+  const settingsModalId = 'smsSettingsModal';
+
+  let recipientCache = [];
 
   // ── Character counter ─────────────────────────
   if (msgArea && charEl) {
@@ -169,46 +189,131 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Render SMS log ────────────────────────────
   if (logList) renderSMSLog(logList);
 
+  // ── Admin announcements integrations ──────────
+  if (isAdminAnnouncements) {
+    loadSMSSettings();
+    loadRecipients();
+
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+        if (typeof openModal === 'function') {
+          openModal(settingsModalId);
+        }
+      });
+    }
+
+    if (saveSettingsBtn) {
+      saveSettingsBtn.addEventListener('click', async () => {
+        const apiUrlInput = document.getElementById('smsGatewayUrl');
+        const apiTokenInput = document.getElementById('smsGatewayToken');
+        const senderIdInput = document.getElementById('smsSenderId');
+
+        const apiUrl = (apiUrlInput?.value || '').trim();
+        const apiToken = (apiTokenInput?.value || '').trim();
+        const senderId = (senderIdInput?.value || '').trim();
+
+        if (!apiUrl) {
+          alert('PhilSMS API URL is required.');
+          return;
+        }
+        if (!apiToken) {
+          alert('PhilSMS API token is required.');
+          return;
+        }
+
+        saveSettingsBtn.disabled = true;
+        const oldText = saveSettingsBtn.textContent;
+        saveSettingsBtn.textContent = 'Saving...';
+
+        try {
+          const res = await fetch('../api/sms/settings.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_url: apiUrl,
+              api_token: apiToken,
+              sender_id: senderId
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            alert(data.message || 'Failed to save SMS settings.');
+            return;
+          }
+
+          if (typeof closeModal === 'function') closeModal(settingsModalId);
+          showSMSResult(document.getElementById('smsResult'), true, 'SMS settings saved successfully.');
+        } catch (err) {
+          alert(err.message || 'Failed to save SMS settings.');
+        } finally {
+          saveSettingsBtn.disabled = false;
+          saveSettingsBtn.textContent = oldText;
+        }
+      });
+    }
+
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', () => {
+        const allChecks = document.querySelectorAll('.sms-recipient-check');
+        allChecks.forEach((cb) => {
+          cb.checked = selectAllCheckbox.checked;
+        });
+        syncSelectAllState();
+      });
+    }
+  }
+
   // ── Form submit ───────────────────────────────
   if (!form) return;
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const rawNumbers = (form.querySelector('#smsRecipients')?.value || '').trim();
     const message    = (form.querySelector('#smsMessage')?.value    || '').trim();
-    const mode       = (form.querySelector('#smsMode')?.value       || 'manual');
-    const gatewayUrl = (form.querySelector('#smsGatewayUrl')?.value || '').trim();
-    const gatewayToken = (form.querySelector('#smsGatewayToken')?.value || '').trim();
+    const apiUrl = (document.getElementById('smsGatewayUrl')?.value || '').trim();
+    const apiToken = (document.getElementById('smsGatewayToken')?.value || '').trim();
+    const senderId = (document.getElementById('smsSenderId')?.value || '').trim();
     const resultBox  = document.getElementById('smsResult');
     const btn        = form.querySelector('[type="submit"]');
 
     let recipients = [];
+    let recipientDetails = [];
+    if (isAdminAnnouncements) {
+      const selectedPhones = new Set();
+      document.querySelectorAll('.sms-recipient-check:checked').forEach((cb) => {
+        selectedPhones.add((cb.value || '').trim());
+      });
 
-    if (mode === 'all') {
-      const users = (JSON.parse(localStorage.getItem('otm_users')) || [])
-        .filter(u => u.phone && u.status === 'Active')
-        .map(u => u.phone);
-      recipients = users;
-    } else {
-      recipients = rawNumbers.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+      recipientDetails = recipientCache.filter((r) => selectedPhones.has(r.phone));
+      recipients = recipientDetails.map((r) => r.phone);
     }
 
     if (!message) { showSMSResult(resultBox, false, 'Message is required.'); return; }
-    if (document.getElementById('adminAnnouncements') && !gatewayUrl) {
-      showSMSResult(resultBox, false, 'Gateway URL is required for Android gateway.');
+    if (isAdminAnnouncements && recipients.length === 0) {
+      showSMSResult(resultBox, false, 'Please select at least one recipient.');
+      return;
+    }
+    if (isAdminAnnouncements && !apiUrl) {
+      showSMSResult(resultBox, false, 'PhilSMS API URL is required.');
+      return;
+    }
+    if (isAdminAnnouncements && !apiToken) {
+      showSMSResult(resultBox, false, 'PhilSMS API token is required.');
       return;
     }
 
     btn.disabled    = true;
-    btn.textContent = 'Sending…';
+    btn.textContent = 'Sending...';
 
-    const result = document.getElementById('adminAnnouncements')
-      ? await SMSBlaster.sendViaAndroidGateway({
+    const result = isAdminAnnouncements
+      ? await SMSBlaster.sendViaPhilSMS({
           message,
-          gatewayUrl,
-          gatewayToken,
-          recipients: mode === 'all' ? [] : recipients
+          apiUrl,
+          apiToken,
+          senderId,
+          recipients,
+          recipientDetails
         })
       : await SMSBlaster.send({ recipients, message });
 
@@ -221,8 +326,149 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     btn.disabled    = false;
-    btn.textContent = document.getElementById('adminAnnouncements') ? '📤 Blast to All Users' : '📤 Send SMS';
+    if (isAdminAnnouncements) {
+      updateRecipientCountUI();
+      
+      // Display detailed debug info if available
+      if (result.debug) {
+        const normalizationHtml = result.debug.normalization_details && result.debug.normalization_details.length > 0
+          ? `<strong>Phone Normalization Details:</strong><br/>${result.debug.normalization_details.map(n => 
+              `${n.input} → ${n.normalized || 'INVALID'} ${n.valid ? '✓' : '✗'}`
+            ).join('<br/>')}<br/><br/>`
+          : '';
+          
+        const debugHtml = `
+          <div style="background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:10px;font-size:.8rem;font-family:monospace;max-height:300px;overflow-y:auto;">
+            <details open>
+              <summary style="cursor:pointer;font-weight:bold;margin-bottom:8px;">📊 Request/Response Debug Info</summary>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid #ddd;">
+                <strong style="color:#d32f2f;">⚠️ Recipient Processing:</strong><br/>
+                Frontend Sent: <strong>${result.debug.recipients_input_count || 0}</strong> recipient(s)<br/>
+                Successfully Normalized: <strong>${result.debug.recipients_normalized_count || 0}</strong> recipient(s)<br/>
+                <br/>${normalizationHtml}
+                <strong>PhilSMS Endpoint:</strong><br/>${escapeHtml(result.debug.endpoint || 'N/A')}<br/><br/>
+                <strong>First Request Payload:</strong><br/>
+                <pre style="background:#fff;padding:6px;border-radius:3px;overflow-x:auto;">${escapeHtml(result.debug.request_payload || '{}')}</pre><br/>
+                <strong>PhilSMS Response (HTTP ${result.debug.http_code || 'N/A'}):</strong><br/>
+                <pre style="background:#fff;padding:6px;border-radius:3px;overflow-x:auto;">${escapeHtml(result.debug.response_body || '(empty)')}</pre>
+              </div>
+            </details>
+          </div>
+        `;
+        const existingResult = document.getElementById('smsResult');
+        if (existingResult) {
+          existingResult.innerHTML += debugHtml;
+        }
+      }
+    } else {
+      btn.textContent = '📤 Send SMS';
+    }
   });
+
+  async function loadSMSSettings() {
+    const apiUrlInput = document.getElementById('smsGatewayUrl');
+    const apiTokenInput = document.getElementById('smsGatewayToken');
+    const senderIdInput = document.getElementById('smsSenderId');
+    if (!apiUrlInput || !apiTokenInput || !senderIdInput) return;
+
+    try {
+      const res = await fetch('../api/sms/settings.php');
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.data) return;
+
+      apiUrlInput.value = data.data.api_url || '';
+      apiTokenInput.value = data.data.api_token || '';
+      senderIdInput.value = data.data.sender_id || '';
+    } catch {
+      // Do nothing; admin can still fill settings manually.
+    }
+  }
+
+  async function loadRecipients() {
+    if (!recipientsChecklist) return;
+
+    recipientsChecklist.innerHTML = '<div class="sms-recipients-state">Loading recipients...</div>';
+    try {
+      const res = await fetch('../api/sms/recipients.php');
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !Array.isArray(data.data)) {
+        recipientsChecklist.innerHTML = '<div class="sms-recipients-state error">Unable to load recipients.</div>';
+        recipientCache = [];
+        updateRecipientCountUI();
+        return;
+      }
+
+      recipientCache = data.data;
+      if (!recipientCache.length) {
+        recipientsChecklist.innerHTML = '<div class="sms-recipients-state">No recipients found.</div>';
+        updateRecipientCountUI();
+        return;
+      }
+
+      recipientsChecklist.innerHTML = recipientCache.map((r, idx) => {
+        const sourceTag = r.source === 'users' ? 'User' : 'Registration';
+        const displayName = escapeHtml(r.name || `Recipient ${idx + 1}`);
+        const phone = escapeHtml(r.phone || '');
+        const phoneDisplay = escapeHtml(r.phone_display || r.phone || '');
+        return `
+          <label class="sms-recipient-item">
+            <input type="checkbox" class="sms-recipient-check" value="${phone}" checked />
+            <span class="sms-recipient-meta">
+              <strong class="sms-recipient-name">${displayName}</strong>
+              <span class="sms-recipient-line">${phoneDisplay}<span class="sms-recipient-source">${sourceTag}</span></span>
+            </span>
+          </label>
+        `;
+      }).join('');
+
+      const checks = recipientsChecklist.querySelectorAll('.sms-recipient-check');
+      checks.forEach((cb) => {
+        cb.addEventListener('change', syncSelectAllState);
+      });
+      syncSelectAllState();
+    } catch {
+      recipientsChecklist.innerHTML = '<div class="sms-recipients-state error">Unable to load recipients.</div>';
+      recipientCache = [];
+      updateRecipientCountUI();
+    }
+  }
+
+  function syncSelectAllState() {
+    if (!selectAllCheckbox) return;
+    const checks = document.querySelectorAll('.sms-recipient-check');
+    if (!checks.length) {
+      selectAllCheckbox.checked = false;
+      return;
+    }
+    const checked = document.querySelectorAll('.sms-recipient-check:checked');
+    selectAllCheckbox.checked = checked.length === checks.length;
+    updateRecipientCountUI();
+  }
+
+  function updateRecipientCountUI() {
+    const checks = document.querySelectorAll('.sms-recipient-check');
+    const checked = document.querySelectorAll('.sms-recipient-check:checked');
+    const total = checks.length;
+    const selected = checked.length;
+
+    if (selectedCountEl) selectedCountEl.textContent = String(selected);
+    if (totalCountEl) totalCountEl.textContent = String(total);
+
+    const submitBtn = form?.querySelector('[type="submit"]');
+    if (submitBtn && isAdminAnnouncements) {
+      submitBtn.textContent = `📤 Blast to ${selected} User${selected === 1 ? '' : 's'}`;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 });
 
 function showSMSResult(el, ok, msg) {

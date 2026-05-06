@@ -59,24 +59,31 @@
       <div class="admin-card" style="margin-top:24px;">
         <div class="admin-card-header">
           <h3><span class="ch-icon">&#128241;</span> Blast SMS for Announcements</h3>
-          <span style="font-size:.78rem;color:#888;">Powered by Android Gateway</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:.78rem;color:#888;">Powered by PhilSMS</span>
+            <button type="button" class="btn" id="smsSettingsBtn" style="background:#e8eaf6;color:#1a237e;font-size:.76rem;padding:6px 10px;">&#9881; Settings</button>
+          </div>
         </div>
         <div class="admin-card-body">
-          <div class="sms-box">
+          <div class="sms-box sms-box-light">
             <h3>&#128241; Send Announcement via SMS</h3>
             <p>Instantly notify all registered participants about this announcement.</p>
             <form id="smsForm">
               <div class="form-group" style="margin-bottom:14px;">
-                <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Gateway URL</label>
-                <input type="url" id="smsGatewayUrl" placeholder="https://your-android-gateway/send" style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.85rem;color:#fff;background:rgba(255,255,255,.1);" />
+                <label class="sms-recipients-header">
+                  <span>Recipients</span>
+                  <span class="sms-select-all-wrap"><input type="checkbox" id="smsSelectAllRecipients" /> Select All</span>
+                </label>
+                <div id="smsRecipientsChecklist" class="sms-recipients-checklist">
+                  <div class="sms-recipients-state">Loading recipients...</div>
+                </div>
+                <div class="sms-recipients-summary">
+                  Selected <strong id="smsSelectedCount">0</strong> of <strong id="smsTotalCount">0</strong> recipients
+                </div>
               </div>
               <div class="form-group" style="margin-bottom:14px;">
-                <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Gateway Token (optional)</label>
-                <input type="text" id="smsGatewayToken" placeholder="Bearer/API token" style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.85rem;color:#fff;background:rgba(255,255,255,.1);" />
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label style="display:block;font-size:.82rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px;">Message</label>
-                <textarea id="smsMessage" maxlength="160" rows="4" placeholder="Type announcement message..." style="width:100%;padding:10px 14px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:.85rem;color:#fff;background:rgba(255,255,255,.1);resize:none;font-family:inherit;"></textarea>
+                <label style="display:block;font-size:.82rem;font-weight:600;color:#334155;margin-bottom:6px;">Message</label>
+                <textarea id="smsMessage" maxlength="160" rows="4" placeholder="Type announcement message..." style="width:100%;padding:10px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.85rem;color:#0f172a;background:#fff;resize:none;font-family:inherit;"></textarea>
                 <div class="sms-char-count" id="smsCharCount"><span>0</span> / 160</div>
               </div>
               <input type="hidden" id="smsMode" value="all" />
@@ -110,6 +117,34 @@
       <div class="modal-footer">
         <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Cancel</button>
         <button class="btn btn-primary" id="saveAnnouncementBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMS Settings Modal -->
+  <div class="modal-overlay" id="smsSettingsModal">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <h3>SMS Gateway Settings (PhilSMS)</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="admin-form-group" style="margin-bottom:14px;">
+          <label>PhilSMS API URL <span style="color:red;">*</span></label>
+          <input type="url" id="smsGatewayUrl" placeholder="https://app.philsms.com/api/v3/sms/send" />
+        </div>
+        <div class="admin-form-group" style="margin-bottom:14px;">
+          <label>PhilSMS API Token <span style="color:red;">*</span></label>
+          <input type="text" id="smsGatewayToken" placeholder="Enter PhilSMS API token" />
+        </div>
+        <div class="admin-form-group">
+          <label>Sender ID (optional)</label>
+          <input type="text" id="smsSenderId" placeholder="e.g. CvSUHub" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" onclick="closeModal('smsSettingsModal')">Close</button>
+        <button type="button" class="btn btn-primary" id="saveSmsSettingsBtn">Save Settings</button>
       </div>
     </div>
   </div>
