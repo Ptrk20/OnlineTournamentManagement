@@ -60,6 +60,7 @@ $roundRobinFormat = 'once';
 $hasThirdPlaceMatch = !empty($input['has_third_place_match']) ? 1 : 0;
 $allowedStatuses = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
 $status      = in_array($input['status'] ?? '', $allowedStatuses, true) ? $input['status'] : 'Upcoming';
+$registrationOpen = isset($input['registration_open']) ? (intval($input['registration_open']) ? 1 : 0) : 1;
 $createdBy   = isset($input['created_by']) ? intval($input['created_by']) : null;
 if ($createdBy !== null && $createdBy <= 0) $createdBy = null;
 
@@ -78,18 +79,18 @@ $stmt = $conn->prepare(
     "INSERT INTO events
        (public_id, title, sports_id, category, event_start_date, event_end_date,
         location, teams_count, tournament_type, round_robin_format,
-        has_third_place_match, description, status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        has_third_place_match, description, status, registration_open, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 );
 if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
 
 $teamsCount = 0; // Auto-calculated from registrations; always start at 0
 $stmt->bind_param(
-    'ssissssississi',
+    'ssissssississii',
     $publicId, $title, $sportsId, $category,
     $startDate, $endDate, $location,
     $teamsCount, $tournamentType, $roundRobinFormat,
-    $hasThirdPlaceMatch, $description, $status, $createdBy
+    $hasThirdPlaceMatch, $description, $status, $registrationOpen, $createdBy
 );
 
 if (!$stmt->execute()) {

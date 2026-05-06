@@ -69,6 +69,7 @@ $roundRobinFormat = 'once';
 $hasThirdPlaceMatch = !empty($input['has_third_place_match']) ? 1 : 0;
 $allowedStatuses = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
 $status      = in_array($input['status'] ?? '', $allowedStatuses, true) ? $input['status'] : 'Upcoming';
+$registrationOpen = isset($input['registration_open']) ? (intval($input['registration_open']) ? 1 : 0) : 1;
 
 // ── Verify sport exists ────────────────────────────────────────────────────
 $chkSport = $conn->prepare('SELECT id FROM sports WHERE id = ? LIMIT 1');
@@ -84,19 +85,19 @@ $stmt = $conn->prepare(
             event_start_date = ?, event_end_date = ?,
             location = ?, teams_count = ?, tournament_type = ?,
             round_robin_format = ?, has_third_place_match = ?,
-            description = ?, status = ?
+            description = ?, status = ?, registration_open = ?
       WHERE id = ?"
 );
 if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
 
 $teamsCount = 0; // Auto-calculated from registrations; always set to 0
 $stmt->bind_param(
-    'sissssississi',
+    'sissssississii',
     $title, $sportsId, $category,
     $startDate, $endDate,
     $location, $teamsCount, $tournamentType,
     $roundRobinFormat, $hasThirdPlaceMatch,
-    $description, $status,
+    $description, $status, $registrationOpen,
     $id
 );
 

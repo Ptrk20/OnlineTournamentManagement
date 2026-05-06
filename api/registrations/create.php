@@ -157,6 +157,28 @@ if ($created_by_id <= 0) {
     ]));
 }
 
+// ── Check that registration is open for the selected event ─────────────────
+$regCheckStmt = $conn->prepare('SELECT registration_open FROM events WHERE id = ? LIMIT 1');
+if ($regCheckStmt) {
+    $regCheckStmt->bind_param('i', $event_id);
+    $regCheckStmt->execute();
+    $regCheckResult = $regCheckStmt->get_result();
+    if ($regCheckResult->num_rows === 0) {
+        $regCheckStmt->close();
+        http_response_code(404);
+        die(json_encode(['success' => false, 'message' => 'Event not found.']));
+    }
+    $regCheckRow = $regCheckResult->fetch_assoc();
+    $regCheckStmt->close();
+    if ((int)$regCheckRow['registration_open'] === 0) {
+        http_response_code(403);
+        die(json_encode([
+            'success' => false,
+            'message' => 'Registration for this event is currently closed.'
+        ]));
+    }
+}
+
 $players_json = json_encode($players, JSON_UNESCAPED_UNICODE);
 $documents_json = json_encode($documents, JSON_UNESCAPED_UNICODE);
 

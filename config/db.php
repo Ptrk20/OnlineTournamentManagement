@@ -13,6 +13,9 @@ define('DB_PASS', 'admin@2026'); // Change this to your MySQL password if needed
 define('DB_NAME', 'otm_db');
 define('DB_PORT', 3306);
 
+// Disable MySQLi exception throwing so error-check patterns (if (!$stmt)) work correctly
+mysqli_report(MYSQLI_REPORT_OFF);
+
 // Create connection using mysqli
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
 

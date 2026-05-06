@@ -529,7 +529,7 @@ async function renderEventsTable(filter = '') {
 
   // On first load (no cache yet) fetch from API; on search use cache
   if (!filter && eventsCache.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr>';
     try {
       const res  = await fetch('../api/events/read.php');
       const json = await res.json();
@@ -537,7 +537,7 @@ async function renderEventsTable(filter = '') {
       eventsCache = Array.isArray(json.data) ? json.data : [];
     } catch (err) {
       console.error('renderEventsTable fetch error:', err);
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#e53935;padding:30px;">Failed to load events.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#e53935;padding:30px;">Failed to load events.</td></tr>`;
       return;
     }
   }
@@ -557,7 +557,7 @@ async function renderEventsTable(filter = '') {
     : eventsCache;
 
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">No events found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#aaa;padding:30px;">No events found.</td></tr>`;
     return;
   }
 
@@ -571,6 +571,11 @@ async function renderEventsTable(filter = '') {
       <td>${formatEventDate(ev.event_end_date)}</td>
       <td>${escapeAdminHTML(ev.location)}</td>
       <td><span class="badge badge-${statusBadge(ev.status)}">${escapeAdminHTML(ev.status)}</span></td>
+      <td>
+        <span class="badge badge-${Number(ev.registration_open) !== 0 ? 'success' : 'danger'}" style="font-size:.75rem;">
+          ${Number(ev.registration_open) !== 0 ? 'Open' : 'Closed'}
+        </span>
+      </td>
       <td>
         <div class="action-btns">
           <button class="action-btn view" title="Bracketing" onclick="openEventBracketing(${Number(ev.id)})"><img src="../src/images/tournament-bracket.png" alt="Bracketing" class="action-btn-icon" /></button>
@@ -595,6 +600,7 @@ async function saveEvent() {
   const status    = document.getElementById('eventStatus')?.value || 'Upcoming';
   const tournamentType = document.getElementById('eventTournamentType')?.value || 'single_elimination';
   const hasThirdPlaceMatch = (document.querySelector('input[name="eventThirdPlace"]:checked')?.value || 'yes') === 'yes';
+  const registrationOpen = Number(document.querySelector('input[name="eventRegistrationOpen"]:checked')?.value ?? 1) === 1;
 
   if (!title || !sportsId || !category || !startDate || !endDate || !location) {
     adminToast('Please fill in all required fields.', 'error');
@@ -618,7 +624,8 @@ async function saveEvent() {
     tournament_type: tournamentType,
     has_third_place_match: hasThirdPlaceMatch,
     description: desc || null,
-    status
+    status,
+    registration_open: registrationOpen ? 1 : 0
   };
 
   const endpoint = id ? '../api/events/update.php' : '../api/events/create.php';
@@ -665,6 +672,9 @@ window.editEvent = async function(id) {
   const thirdPlaceChoice = hasThirdPlace === 1 ? 'yes' : 'no';
   const thirdPlaceEl = document.querySelector(`input[name="eventThirdPlace"][value="${thirdPlaceChoice}"]`);
   if (thirdPlaceEl) thirdPlaceEl.checked = true;
+  const regOpenValue = ev.registration_open == null ? '1' : String(Number(ev.registration_open) !== 0 ? 1 : 0);
+  const regOpenEl = document.querySelector(`input[name="eventRegistrationOpen"][value="${regOpenValue}"]`);
+  if (regOpenEl) regOpenEl.checked = true;
   document.getElementById('eventModalTitle').textContent = 'Edit Event';
   // Show teams field for existing events
   const teamsGroup = document.getElementById('eventTeamsGroup');
@@ -691,6 +701,48 @@ window.deleteEvent = async function(id) {
   } catch (err) {
     console.error('deleteEvent error:', err);
     adminToast(err.message || 'Failed to delete event.', 'error');
+  }
+};
+
+window.toggleRegistrationOpen = async function(id, currentState) {
+  const newState = currentState === 1 ? 0 : 1;
+  const label = newState === 1 ? 'open' : 'close';
+
+  const ev = eventsCache.find(e => Number(e.id) === Number(id));
+  if (!ev) return;
+
+  try {
+    const payload = {
+      id: Number(id),
+      title: ev.title,
+      sports_id: Number(ev.sports_id),
+      category: ev.category,
+      event_start_date: ev.event_start_date,
+      event_end_date: ev.event_end_date,
+      location: ev.location,
+      tournament_type: ev.tournament_type || 'single_elimination',
+      has_third_place_match: ev.has_third_place_match == null ? true : Number(ev.has_third_place_match) === 1,
+      description: ev.description || null,
+      status: ev.status,
+      registration_open: newState
+    };
+    const res = await fetch('../api/events/update.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to update event.');
+
+    // Update cache
+    const cached = eventsCache.find(e => Number(e.id) === Number(id));
+    if (cached) cached.registration_open = newState;
+
+    adminToast(`Registration ${label === 'open' ? 'opened' : 'closed'} for "${ev.title}".`);
+    await renderEventsTable(document.getElementById('eventSearch')?.value || '');
+  } catch (err) {
+    console.error('toggleRegistrationOpen error:', err);
+    adminToast(err.message || `Failed to ${label} registration.`, 'error');
   }
 };
 
@@ -2260,6 +2312,8 @@ function clearEventForm() {
   if (tournamentType) tournamentType.value = 'single_elimination';
   const thirdPlaceDefault = document.querySelector('input[name="eventThirdPlace"][value="yes"]');
   if (thirdPlaceDefault) thirdPlaceDefault.checked = true;
+  const regOpenDefault = document.querySelector('input[name="eventRegistrationOpen"][value="1"]');
+  if (regOpenDefault) regOpenDefault.checked = true;
   const titleEl = document.getElementById('eventModalTitle');
   if (titleEl) titleEl.textContent = 'Add New Event';
   // Hide teams field for new events
@@ -3050,8 +3104,16 @@ function refreshRegistrationEvents() {
     return;
   }
 
+  const session = AuthModule.getSession();
+  const isRep = isRepresentativeSession(session);
+
   const filtered = registrationEventsCache.filter((event) => {
-    return Number(event.sports_id) === sportId && String(event.category || '').trim().toLowerCase() === category;
+    const matchesSport = Number(event.sports_id) === sportId;
+    const matchesCategory = String(event.category || '').trim().toLowerCase() === category;
+    if (!matchesSport || !matchesCategory) return false;
+    // Representatives can only submit to open events
+    if (isRep && Number(event.registration_open) === 0) return false;
+    return true;
   });
 
   if (!filtered.length) {
@@ -3060,7 +3122,11 @@ function refreshRegistrationEvents() {
   }
 
   eventSelect.innerHTML = ['<option value="">Select event</option>']
-    .concat(filtered.map((event) => `<option value="${Number(event.id)}">${escapeAdminHTML(event.title || '')}</option>`))
+    .concat(filtered.map((event) => {
+      const isOpen = Number(event.registration_open) !== 0;
+      const closedLabel = isOpen ? '' : ' [Registration Closed]';
+      return `<option value="${Number(event.id)}" ${!isOpen ? 'disabled' : ''}>${escapeAdminHTML((event.title || '') + closedLabel)}</option>`;
+    }))
     .join('');
 }
 
@@ -3277,7 +3343,7 @@ async function renderRegistrationsTable(session, filter = '') {
   const tbody = document.getElementById('registrationsTableBody');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px;">Loading registrations...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">Loading registrations...</td></tr>';
 
   let rows = [];
   try {
@@ -3286,7 +3352,7 @@ async function renderRegistrationsTable(session, filter = '') {
       rows = rows.filter((row) => Number(row.created_by_id) === Number(session.id));
     }
   } catch (err) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:30px;">Failed to load registrations.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#c62828;padding:30px;">Failed to load registrations.</td></tr>';
     adminToast(err.message || 'Failed to load registrations.', 'error');
     return;
   }
@@ -3296,6 +3362,7 @@ async function renderRegistrationsTable(session, filter = '') {
     rows = rows.filter((row) => {
       return [
         row.team_name,
+        row.sport_name,
         row.event_name,
         row.category,
         row.representative_name,
@@ -3309,7 +3376,7 @@ async function renderRegistrationsTable(session, filter = '') {
   rows.sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px;">${isRepresentativeSession(session) ? 'No submitted registration yet.' : 'No registration records found.'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px;">${isRepresentativeSession(session) ? 'No submitted registration yet.' : 'No registration records found.'}</td></tr>`;
     return;
   }
 
@@ -3318,10 +3385,15 @@ async function renderRegistrationsTable(session, filter = '') {
       isAdministratorSession(session) &&
       String(row.status || '').toLowerCase() === 'pending';
 
+    const canEdit =
+      isRepresentativeSession(session) &&
+      String(row.status || '').toLowerCase() === 'pending';
+
     return `
       <tr>
         <td>${index + 1}</td>
         <td><strong>${escapeAdminHTML(row.team_name || '')}</strong></td>
+        <td>${escapeAdminHTML(row.sport_name || '')}</td>
         <td>${escapeAdminHTML(row.event_name || '')}</td>
         <td>${escapeAdminHTML(row.category || '')}</td>
         <td>${escapeAdminHTML(row.representative_name || row.submitted_by_name || '')}</td>
@@ -3330,6 +3402,7 @@ async function renderRegistrationsTable(session, filter = '') {
         <td>
           <div class="action-btns">
             <button class="action-btn view" onclick="viewRegistrationRequest(${Number(row.id)})" title="View Request">&#128065;</button>
+            ${canEdit ? `<button class="action-btn edit" onclick="editRegistration(${Number(row.id)})" title="Edit Registration">✏️</button>` : ''}
             ${canReview ? `<button class="action-btn edit" onclick="updateRegistrationStatus(${Number(row.id)}, 'Approved')" title="Approve">&#10003;</button>` : ''}
             ${canReview ? `<button class="action-btn del" onclick="updateRegistrationStatus(${Number(row.id)}, 'Rejected')" title="Reject">&#10005;</button>` : ''}
           </div>
@@ -3340,6 +3413,13 @@ async function renderRegistrationsTable(session, filter = '') {
 }
 
 async function saveRegistration(session) {
+  // If editing an existing registration (edit mode), delegate to updateRegistration
+  const editingId = Number(document.getElementById('registrationId')?.value || 0);
+  if (editingId > 0) {
+    await updateRegistration(session);
+    return;
+  }
+
   const repFirstName = document.getElementById('repFirstName')?.value.trim();
   const repLastName = document.getElementById('repLastName')?.value.trim();
   const repStudentId = document.getElementById('repStudentId')?.value.trim();
@@ -3399,6 +3479,12 @@ async function saveRegistration(session) {
 
   if (Number(selectedEvent.sports_id) !== sportId) {
     adminToast('Selected event does not match the selected sport.', 'error');
+    return;
+  }
+
+  // Check if registration is open for this event (client-side guard; server also checks)
+  if (isRepresentativeSession(session) && Number(selectedEvent.registration_open) === 0) {
+    adminToast('Registration for this event is currently closed.', 'error');
     return;
   }
 
@@ -3506,6 +3592,168 @@ function clearRegistrationForm(session) {
   const statusGroup = document.getElementById('registrationStatusGroup');
   if (statusGroup) {
     statusGroup.style.display = isRepresentativeSession(session) ? 'none' : '';
+  }
+
+  // Reset modal title and save button in case we were in edit mode
+  const modalTitle = document.getElementById('registrationModalTitle');
+  if (modalTitle) modalTitle.textContent = 'Submit Registration';
+  const saveBtn = document.getElementById('saveRegistrationBtn');
+  if (saveBtn) saveBtn.textContent = 'Submit Registration';
+}
+
+// ── Representative edit of Pending registration ────────────────────────────
+window.editRegistration = async function(id) {
+  const session = AuthModule.getSession();
+  if (!session || !isRepresentativeSession(session)) return;
+
+  let row;
+  try {
+    row = await fetchRegistrationById(id);
+  } catch (err) {
+    adminToast(err.message || 'Failed to load registration.', 'error');
+    return;
+  }
+
+  if (String(row.status || '').toLowerCase() !== 'pending') {
+    adminToast('Only Pending registrations can be edited.', 'error');
+    return;
+  }
+
+  // Pre-fill the registration form
+  clearRegistrationForm(session);
+
+  // Store editing id in hidden field
+  const registrationIdEl = document.getElementById('registrationId');
+  if (registrationIdEl) registrationIdEl.value = row.id;
+
+  // Representative info
+  const repFirstName = document.getElementById('repFirstName');
+  const repLastName = document.getElementById('repLastName');
+  const repStudentId = document.getElementById('repStudentId');
+  if (repFirstName) repFirstName.value = row.representative_first_name || '';
+  if (repLastName) repLastName.value = row.representative_last_name || '';
+  if (repStudentId) repStudentId.value = row.representative_student_id || '';
+
+  const repCourse = document.getElementById('repCourse');
+  if (repCourse && row.representative_course_id) repCourse.value = String(row.representative_course_id);
+
+  // Team/event info
+  const regTeamName = document.getElementById('regTeamName');
+  if (regTeamName) regTeamName.value = row.team_name || '';
+
+  const regSportId = document.getElementById('regSportId');
+  if (regSportId) regSportId.value = String(row.sports_id || '');
+
+  const regCategory = document.getElementById('regCategory');
+  if (regCategory) regCategory.value = row.category || '';
+
+  refreshRegistrationEvents();
+
+  const regEventId = document.getElementById('regEventId');
+  if (regEventId) regEventId.value = String(row.event_id || '');
+
+  toggleRegistrationParticipantsSection();
+
+  // Contact
+  const regContact = document.getElementById('regContact');
+  if (regContact) regContact.value = row.contact_number || '';
+
+  const regEmail = document.getElementById('regEmail');
+  if (regEmail) regEmail.value = row.email_address || '';
+
+  // Coach
+  const coachFirstName = document.getElementById('coachFirstName');
+  const coachLastName = document.getElementById('coachLastName');
+  if (coachFirstName) coachFirstName.value = row.coach_first_name || '';
+  if (coachLastName) coachLastName.value = row.coach_last_name || '';
+
+  // Players
+  try {
+    // read.php decodes players_json → row.players (array); fall back to players_json if present
+    const rawPlayers = Array.isArray(row.players) ? row.players
+      : (typeof row.players_json === 'string' ? JSON.parse(row.players_json || '[]') : []);
+    const players = rawPlayers;
+    registrationPlayersDraft = players.map((p) => ({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      last_name: p.last_name || '',
+      first_name: p.first_name || '',
+      student_id: p.student_id || '',
+      course_id: p.course_id || 0,
+      course_name: p.course_name || ''
+    }));
+  } catch { registrationPlayersDraft = []; }
+  renderRegistrationPlayersTable();
+
+  // Notes
+  const regNotes = document.getElementById('regNotes');
+  if (regNotes) regNotes.value = row.notes || '';
+
+  // Change modal title / save button label to indicate edit mode
+  const modalTitle = document.getElementById('registrationModalTitle');
+  if (modalTitle) modalTitle.textContent = 'Edit Registration';
+  const saveBtn = document.getElementById('saveRegistrationBtn');
+  if (saveBtn) saveBtn.textContent = 'Update Registration';
+
+  openModal('registrationModal');
+};
+
+async function updateRegistration(session) {
+  const id = Number(document.getElementById('registrationId')?.value || 0);
+  if (id <= 0) return saveRegistration(session); // no id set → new registration
+
+  const repFirstName = document.getElementById('repFirstName')?.value.trim();
+  const repLastName = document.getElementById('repLastName')?.value.trim();
+  const repStudentId = document.getElementById('repStudentId')?.value.trim();
+  const repCourseSelect = document.getElementById('repCourse');
+  const repCourseId = Number(repCourseSelect?.value || 0);
+
+  const teamName = document.getElementById('regTeamName')?.value.trim();
+  const coachFirstName = document.getElementById('coachFirstName')?.value.trim();
+  const coachLastName = document.getElementById('coachLastName')?.value.trim();
+  const contact = document.getElementById('regContact')?.value.trim();
+  const email = document.getElementById('regEmail')?.value.trim();
+  const notes = document.getElementById('regNotes')?.value.trim() || '';
+
+  if (!repFirstName || !repLastName || !repStudentId || !repCourseId || !contact || !email || !teamName) {
+    adminToast('Please fill in all required fields.', 'error');
+    return;
+  }
+
+  if (!registrationPlayersDraft.length) {
+    adminToast('Please add at least one player.', 'error');
+    return;
+  }
+
+  const payload = {
+    id,
+    created_by_id: Number(session.id) || 0,
+    team_name: teamName,
+    representative_first_name: repFirstName,
+    representative_last_name: repLastName,
+    representative_student_id: repStudentId,
+    representative_course_id: repCourseId,
+    contact_number: contact,
+    email_address: email,
+    coach: { first_name: coachFirstName, last_name: coachLastName },
+    players: registrationPlayersDraft.map((p) => ({ ...p })),
+    documents: registrationDocumentsDraft.map((d) => ({ name: d.name, size: d.size, type: d.type })),
+    notes
+  };
+
+  try {
+    await registrationApiRequest('../api/registrations/update.php', 'POST', payload);
+    closeModal('registrationModal');
+    clearRegistrationForm(session);
+
+    const modalTitle = document.getElementById('registrationModalTitle');
+    if (modalTitle) modalTitle.textContent = 'Submit Registration';
+    const saveBtn = document.getElementById('saveRegistrationBtn');
+    if (saveBtn) saveBtn.textContent = 'Submit Registration';
+
+    await renderRegistrationsTable(session, document.getElementById('registrationSearch')?.value || '');
+    adminToast('Registration updated successfully.');
+  } catch (err) {
+    adminToast(err.message || 'Failed to update registration.', 'error');
   }
 }
 
