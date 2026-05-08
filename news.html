@@ -54,64 +54,82 @@
           <div class="news-panel-head">
             <h3>&#129351; Medal Standings</h3>
           </div>
-          <div class="news-standings-card">
-            <div class="news-standings-header">
-              <span class="news-live-indicator"><span class="dot"></span>LIVE</span>
+          <div class="course-leaderboard-card">
+            <div class="course-leaderboard-toolbar">
+              <div class="course-year-filter">
+                <label for="newsStandingsYear">Year</label>
+                <select id="newsStandingsYear">
+                  <option value="">All</option>
+                </select>
+              </div>
             </div>
 
-            <div class="standings-icons-row">
-              <div style="text-align:left;">Course</div>
-              <div title="Volleyball">&#127952;</div>
-              <div title="Basketball">&#127936;</div>
-              <div title="Futsal">&#9917;</div>
-              <div title="Badminton">&#127992;</div>
-              <div>&#129351;</div>
-              <div>&#129352;</div>
-              <div>&#129353;</div>
+            <div class="course-leaderboard-table-wrap">
+              <table class="course-leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>Sport</th>
+                    <th>Category</th>
+                    <th>Gold</th>
+                    <th>Silver</th>
+                    <th>Bronze</th>
+                  </tr>
+                </thead>
+                <tbody id="newsStandingsTable">
+                  <tr>
+                    <td colspan="5" class="course-leaderboard-empty">Loading standings...</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
-            <div class="standings-labels-row">
-              <div></div>
-              <div>VOL</div>
-              <div>BBL</div>
-              <div>FUT</div>
-              <div>BAD</div>
-              <div class="label-gold">G</div>
-              <div class="label-silver">S</div>
-              <div class="label-bronze">B</div>
-            </div>
-
-            <div id="newsStandingsBody"></div>
-            <div class="news-standings-footer">Last updated: <span id="newsStandingsUpdated">just now</span></div>
+            <div class="course-leaderboard-footer">Last updated: <span id="newsStandingsUpdated">just now</span></div>
           </div>
         </article>
 
         <article class="news-panel">
           <div class="news-panel-head">
-            <h3>&#128276; Winner Announcements</h3>
+            <h3>&#128276; Announcements</h3>
           </div>
-          <div id="winnersAnnouncementList" class="winners-list"></div>
+          <div class="announcements-scroll-container">
+            <div id="winnersAnnouncementList" class="winners-list"></div>
+          </div>
         </article>
 
         <article class="news-panel">
           <div class="news-panel-head">
-            <h3>&#127942; Course Leaderboards</h3>
+            <h3>&#127942; Department Leaderboards</h3>
           </div>
-          <div class="leaderboard-sport-filters" id="leaderboardSportFilters">
-            <button type="button" class="sport-filter-icon active" data-sport="vol" aria-label="Volleyball">
-              <img src="src/images/volleyball.png" alt="Volleyball" />
-            </button>
-            <button type="button" class="sport-filter-icon" data-sport="bbl" aria-label="Basketball">
-              <img src="src/images/basketball.png" alt="Basketball" />
-            </button>
-            <button type="button" class="sport-filter-icon" data-sport="fut" aria-label="Futsal">
-              <img src="src/images/futsal.png" alt="Futsal" />
-            </button>
-            <button type="button" class="sport-filter-icon" data-sport="bad" aria-label="Badminton">
-              <img src="src/images/shuttlecock.png" alt="Badminton" />
-            </button>
+          <div class="course-leaderboard-card">
+            <div class="course-leaderboard-toolbar">
+              <div class="course-year-filter">
+                <label for="courseLeaderboardYear">Year</label>
+                <select id="courseLeaderboardYear">
+                  <option value="">All</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="course-leaderboard-table-wrap">
+              <table class="course-leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>Department</th>
+                    <th>Gold</th>
+                    <th>Silver</th>
+                    <th>Bronze</th>
+                  </tr>
+                </thead>
+                <tbody id="courseLeaderboardBody">
+                  <tr>
+                    <td colspan="4" class="course-leaderboard-empty">Loading leaderboard...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="course-leaderboard-footer">Last updated: <span id="courseLeaderboardUpdated">just now</span></div>
           </div>
-          <div id="sportLeaderboardList" class="sport-leaderboard-list"></div>
         </article>
       </div>
     </div>

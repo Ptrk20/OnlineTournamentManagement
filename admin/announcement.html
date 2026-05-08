@@ -18,6 +18,7 @@
       <a href="register.html"><span class="nav-icon">&#128100;</span> Registration</a>
       <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
       <a href="announcement.html" class="active"><span class="nav-icon">&#128276;</span> Announcements</a>
+      <a href="reports.html"><span class="nav-icon">&#128202;</span> Reports</a>
       <div class="nav-label">Users</div>
       <a href="manage-users.html"><span class="nav-icon">&#128101;</span> Manage Users</a>
       <div class="nav-label">Content</div>
@@ -42,15 +43,30 @@
     </header>
 
     <main class="admin-content">
+      <!-- Templates Section -->
+      <div class="admin-card" style="margin-bottom:24px;">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">🔧</span> Announcement Templates</h3>
+          <button class="btn btn-primary" id="addTemplateBtn" style="font-size:.82rem;padding:8px 16px;">+ New Template</button>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>#</th><th>Template Name</th><th>Title</th><th>Preview</th><th>Actions</th></tr></thead>
+            <tbody id="templatesTableBody"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Announcements Section -->
       <div class="admin-card">
         <div class="admin-card-header">
-          <h3><span class="ch-icon">&#128276;</span> Announcements</h3>
+          <h3><span class="ch-icon">&#128276;</span> All Announcements</h3>
           <button class="btn btn-primary" id="addAnnouncementBtn" style="font-size:.82rem;padding:8px 16px;">+ New Announcement</button>
         </div>
         <div class="admin-table-wrap">
           <table class="admin-table">
-            <thead><tr><th>#</th><th>Announcement</th><th>Date</th><th>Actions</th></tr></thead>
-            <tbody id="announcementsTableBody"><tr><td colspan="4" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr></tbody>
+            <thead><tr><th>#</th><th>Announcement</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="announcementsTableBody"><tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -105,18 +121,59 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="announcementId" />
+        <div class="admin-form-group" style="margin-bottom:14px;">
+          <label>Use Template (optional)</label>
+          <select id="announcementTemplate" style="width:100%;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:.85rem;color:#0f172a;background:#fff;">
+            <option value="">-- No Template --</option>
+          </select>
+        </div>
         <div class="admin-form-group" style="margin-bottom:16px;">
           <label>Title <span style="color:red;">*</span></label>
           <input type="text" id="announcementTitle" placeholder="Announcement title" />
         </div>
-        <div class="admin-form-group">
+        <div class="admin-form-group" style="margin-bottom:14px;">
           <label>Message <span style="color:red;">*</span></label>
           <textarea id="announcementMessage" rows="5" placeholder="Announcement content..."></textarea>
         </div>
+        <div class="admin-form-group">
+          <label class="announcement-sms-label">
+            <input type="checkbox" id="announcementSmsSent" />
+            <span>This announcement was sent via SMS</span>
+          </label>
+        </div>
       </div>
       <div class="modal-footer">
-        <button class="btn modal-close" style="background:#f0f2f5;color:#555;">Cancel</button>
+        <button type="button" class="btn btn-cancel" onclick="closeModal('announcementModal')">Cancel</button>
         <button class="btn btn-primary" id="saveAnnouncementBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Template Modal -->
+  <div class="modal-overlay" id="templateModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>New Template</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="templateId" />
+        <div class="admin-form-group" style="margin-bottom:16px;">
+          <label>Template Name <span style="color:red;">*</span></label>
+          <input type="text" id="templateName" placeholder="e.g., Event Reminder, Sports Update" />
+        </div>
+        <div class="admin-form-group" style="margin-bottom:16px;">
+          <label>Title <span style="color:red;">*</span></label>
+          <input type="text" id="templateTitle" placeholder="Template title" />
+        </div>
+        <div class="admin-form-group">
+          <label>Message <span style="color:red;">*</span></label>
+          <textarea id="templateMessage" rows="5" placeholder="Template content..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-cancel" onclick="closeModal('templateModal')">Cancel</button>
+        <button class="btn btn-primary" id="saveTemplateBtn">Save</button>
       </div>
     </div>
   </div>

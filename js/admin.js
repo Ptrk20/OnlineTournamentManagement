@@ -4321,15 +4321,20 @@ async function parseApiJson(response) {
   let parsed;
   try {
     parsed = JSON.parse(text);
-  } catch {
-    throw new Error('Server returned invalid JSON. Check PHP errors and API path.');
+  } catch (e) {
+    console.error('JSON Parse Error. Response text:', text);
+    console.error('Response status:', response.status);
+    throw new Error('Server returned invalid JSON. Response: ' + (text.substring(0, 200) || 'empty'));
   }
 
   if (!response.ok && parsed && parsed.message) {
     throw new Error(parsed.message);
   }
-  if (!response.ok && (!parsed || !parsed.message)) {
-    throw new Error('Server request failed.');
+  if (!response.ok && parsed && parsed.error) {
+    throw new Error(parsed.error);
+  }
+  if (!response.ok && (!parsed || (!parsed.message && !parsed.error))) {
+    throw new Error('Server request failed. Status: ' + response.status);
   }
 
   return parsed;
@@ -4342,82 +4347,317 @@ function initAnnouncementManager() {
   const page = document.getElementById('adminAnnouncements');
   if (!page) return;
 
-  renderAnnouncementsTable();
+  loadAnnouncements();
+  loadTemplates();
 
-  const addBtn  = document.getElementById('addAnnouncementBtn');
+  const addBtn = document.getElementById('addAnnouncementBtn');
   if (addBtn) addBtn.addEventListener('click', () => { clearAnnouncementForm(); openModal('announcementModal'); });
 
   const saveBtn = document.getElementById('saveAnnouncementBtn');
   if (saveBtn) saveBtn.addEventListener('click', saveAnnouncement);
+
+  const addTemplateBtn = document.getElementById('addTemplateBtn');
+  if (addTemplateBtn) addTemplateBtn.addEventListener('click', () => { clearTemplateForm(); openModal('templateModal'); });
+
+  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+  if (saveTemplateBtn) saveTemplateBtn.addEventListener('click', saveTemplate);
+
+  const templateSelect = document.getElementById('announcementTemplate');
+  if (templateSelect) templateSelect.addEventListener('change', loadTemplateIntoForm);
 }
 
-function renderAnnouncementsTable() {
+async function loadAnnouncements() {
+  try {
+    const resp = await fetch('../api/announcements/read.php');
+    const data = await parseApiJson(resp);
+    if (!data.success) throw new Error(data.error || 'Failed to load announcements');
+
+    const announcements = Array.isArray(data.data) ? data.data : [];
+    renderAnnouncementsTable(announcements);
+  } catch (err) {
+    adminToast(err.message || 'Failed to load announcements.', 'error');
+  }
+}
+
+function renderAnnouncementsTable(announcements) {
   const tbody = document.getElementById('announcementsTableBody');
   if (!tbody) return;
 
-  const items = DataStore.getAnnouncements();
-  if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:30px;">No announcements.</td></tr>';
+  const isSmsSent = (value) => Number(value) === 1;
+
+  if (!announcements.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">No announcements.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = items.map((a, i) => `
+  tbody.innerHTML = announcements.map((a, i) => {
+    const statusBadgeHtml = isSmsSent(a.sms_sent) ? 
+      `<span style="display:inline-block;background:#10b981;color:#fff;padding:4px 8px;border-radius:4px;font-size:.75rem;">📱 SMS Sent</span>` :
+      `<span style="display:inline-block;background:#f3f4f6;color:#6b7280;padding:4px 8px;border-radius:4px;font-size:.75rem;">📄 Page Only</span>`;
+    
+    return `
+      <tr>
+        <td>${i + 1}</td>
+        <td><strong>${escapeAdminHTML(a.title)}</strong><br><small style="color:#aaa">${escapeAdminHTML(String(a.message).slice(0, 80))}…</small></td>
+        <td>${new Date(a.created_at).toLocaleDateString()}</td>
+        <td>${statusBadgeHtml}</td>
+        <td>
+          <div class="action-btns">
+            <button class="action-btn edit" onclick="editAnnouncement(${a.id})">✏️</button>
+            <button class="action-btn del" onclick="deleteAnnouncement(${a.id})">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function saveAnnouncement() {
+  const id = document.getElementById('announcementId')?.value;
+  const title = document.getElementById('announcementTitle')?.value.trim();
+  const message = document.getElementById('announcementMessage')?.value.trim();
+  const smsSent = document.getElementById('announcementSmsSent')?.checked ? 1 : 0;
+
+  if (!title || !message) { 
+    adminToast('Title and message are required.', 'error'); 
+    return; 
+  }
+
+  try {
+    let endpoint, method = 'POST', body;
+
+    if (id) {
+      endpoint = '../api/announcements/update.php';
+      body = { id: parseInt(id), title, message, sms_sent: smsSent };
+    } else {
+      endpoint = '../api/announcements/create.php';
+      body = { title, message, sms_sent: smsSent };
+    }
+
+    const resp = await fetch(endpoint, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await parseApiJson(resp);
+    if (!data.success) throw new Error(data.error || 'Failed to save announcement');
+
+    loadAnnouncements();
+    closeModal('announcementModal');
+    adminToast(id ? 'Announcement updated.' : 'Announcement published.');
+  } catch (err) {
+    adminToast(err.message || 'Failed to save announcement.', 'error');
+  }
+}
+
+window.editAnnouncement = async function(id) {
+  try {
+    const resp = await fetch('../api/announcements/read.php');
+    const data = await parseApiJson(resp);
+    if (!data.success || !Array.isArray(data.data)) throw new Error('Failed to load announcement');
+
+    const a = data.data.find(x => Number(x.id) === Number(id));
+    if (!a) throw new Error('Announcement not found');
+
+    document.getElementById('announcementId').value = a.id;
+    document.getElementById('announcementTitle').value = a.title;
+    document.getElementById('announcementMessage').value = a.message;
+    document.getElementById('announcementSmsSent').checked = Number(a.sms_sent) === 1;
+    document.getElementById('announcementTemplate').value = '';
+    openModal('announcementModal');
+  } catch (err) {
+    adminToast(err.message || 'Failed to load announcement.', 'error');
+  }
+};
+
+window.deleteAnnouncement = async function(id) {
+  if (!confirm('Delete this announcement?')) return;
+
+  try {
+    const resp = await fetch('../api/announcements/delete.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+
+    const data = await parseApiJson(resp);
+    if (!data.success) throw new Error(data.error || 'Failed to delete announcement');
+
+    loadAnnouncements();
+    adminToast('Announcement deleted.', 'warning');
+  } catch (err) {
+    adminToast(err.message || 'Failed to delete announcement.', 'error');
+  }
+};
+
+function clearAnnouncementForm() {
+  ['announcementId', 'announcementTitle', 'announcementMessage'].forEach(i => {
+    const el = document.getElementById(i); 
+    if (el) el.value = '';
+  });
+  const smsCb = document.getElementById('announcementSmsSent');
+  if (smsCb) smsCb.checked = false;
+  const templateSel = document.getElementById('announcementTemplate');
+  if (templateSel) templateSel.value = '';
+}
+
+/* =========================================
+   TEMPLATES MANAGER
+   ========================================= */
+async function loadTemplates() {
+  try {
+    const resp = await fetch('../api/announcements/templates_read.php');
+    const data = await parseApiJson(resp);
+    if (!data.success) throw new Error(data.error || 'Failed to load templates');
+
+    const templates = Array.isArray(data.data) ? data.data : [];
+    renderTemplatesTable(templates);
+    populateTemplateSelect(templates);
+  } catch (err) {
+    adminToast(err.message || 'Failed to load templates.', 'error');
+  }
+}
+
+function renderTemplatesTable(templates) {
+  const tbody = document.getElementById('templatesTableBody');
+  if (!tbody) return;
+
+  if (!templates.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">No templates.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = templates.map((t, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td><strong>${escapeAdminHTML(a.title)}</strong><br><small style="color:#aaa">${escapeAdminHTML(a.message.slice(0,80))}…</small></td>
-      <td>${escapeAdminHTML(a.date)}</td>
+      <td><strong>${escapeAdminHTML(t.template_name)}</strong></td>
+      <td>${escapeAdminHTML(t.title)}</td>
+      <td><small style="color:#aaa">${escapeAdminHTML(String(t.message).slice(0, 60))}…</small></td>
       <td>
         <div class="action-btns">
-          <button class="action-btn edit" onclick="editAnnouncement('${a.id}')">✏️</button>
-          <button class="action-btn del"  onclick="deleteAnnouncement('${a.id}')">🗑️</button>
+          <button class="action-btn edit" onclick="editTemplate(${t.id})">✏️</button>
+          <button class="action-btn del" onclick="deleteTemplate(${t.id})">🗑️</button>
         </div>
       </td>
     </tr>
   `).join('');
 }
 
-function saveAnnouncement() {
-  const id      = document.getElementById('announcementId')?.value;
-  const title   = document.getElementById('announcementTitle')?.value.trim();
-  const message = document.getElementById('announcementMessage')?.value.trim();
+function populateTemplateSelect(templates) {
+  const select = document.getElementById('announcementTemplate');
+  if (!select) return;
 
-  if (!title || !message) { adminToast('Title and message are required.', 'error'); return; }
-
-  const items = DataStore.getAnnouncements();
-  const date  = new Date().toLocaleDateString();
-
-  if (id) {
-    const idx = items.findIndex(a => a.id === id);
-    if (idx > -1) items[idx] = { ...items[idx], title, message };
-  } else {
-    items.unshift({ id: 'a' + Date.now(), title, message, date });
-  }
-
-  DataStore.saveAnnouncements(items);
-  renderAnnouncementsTable();
-  closeModal('announcementModal');
-  adminToast(id ? 'Announcement updated.' : 'Announcement published.');
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">-- No Template --</option>';
+  templates.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.template_name;
+    select.appendChild(opt);
+  });
+  select.value = currentValue;
 }
 
-window.editAnnouncement = function(id) {
-  const a = DataStore.getAnnouncements().find(x => x.id === id);
-  if (!a) return;
-  document.getElementById('announcementId').value      = a.id;
-  document.getElementById('announcementTitle').value   = a.title;
-  document.getElementById('announcementMessage').value = a.message;
-  openModal('announcementModal');
+function loadTemplateIntoForm() {
+  const select = document.getElementById('announcementTemplate');
+  if (!select || !select.value) return;
+
+  fetch('../api/announcements/templates_read.php')
+    .then(r => parseApiJson(r))
+    .then(data => {
+      if (!data.success || !Array.isArray(data.data)) throw new Error('Failed to load template');
+      const template = data.data.find(t => t.id == select.value);
+      if (template) {
+        document.getElementById('announcementTitle').value = template.title;
+        document.getElementById('announcementMessage').value = template.message;
+      }
+    })
+    .catch(err => adminToast(err.message || 'Failed to load template.', 'error'));
+}
+
+async function saveTemplate() {
+  const id = document.getElementById('templateId')?.value;
+  const templateName = document.getElementById('templateName')?.value.trim();
+  const title = document.getElementById('templateTitle')?.value.trim();
+  const message = document.getElementById('templateMessage')?.value.trim();
+
+  if (!templateName || !title || !message) {
+    adminToast('Template name, title, and message are required.', 'error');
+    return;
+  }
+
+  try {
+    let endpoint, body;
+
+    if (id) {
+      endpoint = '../api/announcements/templates_update.php';
+      body = { id: parseInt(id), template_name: templateName, title, message };
+    } else {
+      endpoint = '../api/announcements/templates_create.php';
+      body = { template_name: templateName, title, message };
+    }
+
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await parseApiJson(resp);
+    if (!data.success) throw new Error(data.error || 'Failed to save template');
+
+    loadTemplates();
+    closeModal('templateModal');
+    adminToast(id ? 'Template updated.' : 'Template created.');
+  } catch (err) {
+    adminToast(err.message || 'Failed to save template.', 'error');
+  }
+}
+
+window.editTemplate = async function(id) {
+  try {
+    const resp = await fetch('../api/announcements/templates_read.php');
+    const data = await parseApiJson(resp);
+    if (!data.success || !Array.isArray(data.data)) throw new Error('Failed to load templates');
+
+    const template = data.data.find(t => t.id === id);
+    if (!template) throw new Error('Template not found');
+
+    document.getElementById('templateId').value = template.id;
+    document.getElementById('templateName').value = template.template_name;
+    document.getElementById('templateTitle').value = template.title;
+    document.getElementById('templateMessage').value = template.message;
+    openModal('templateModal');
+  } catch (err) {
+    adminToast(err.message || 'Failed to load template.', 'error');
+  }
 };
 
-window.deleteAnnouncement = function(id) {
-  if (!confirm('Delete this announcement?')) return;
-  DataStore.saveAnnouncements(DataStore.getAnnouncements().filter(a => a.id !== id));
-  renderAnnouncementsTable();
-  adminToast('Announcement deleted.', 'warning');
+window.deleteTemplate = async function(id) {
+  if (!confirm('Delete this template?')) return;
+
+  try {
+    const resp = await fetch('../api/announcements/templates_delete.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+
+    const data = await parseApiJson(resp);
+    if (!data.success) throw new Error(data.error || 'Failed to delete template');
+
+    loadTemplates();
+    adminToast('Template deleted.', 'warning');
+  } catch (err) {
+    adminToast(err.message || 'Failed to delete template.', 'error');
+  }
 };
 
-function clearAnnouncementForm() {
-  ['announcementId','announcementTitle','announcementMessage'].forEach(i => {
-    const el = document.getElementById(i); if (el) el.value = '';
+function clearTemplateForm() {
+  ['templateId', 'templateName', 'templateTitle', 'templateMessage'].forEach(i => {
+    const el = document.getElementById(i);
+    if (el) el.value = '';
   });
 }
 
@@ -5017,6 +5257,12 @@ function initAboutManager() {
    REPORTS / EXPORT
    ============================================= */
 function initReports() {
+  const reportsPage = document.getElementById('adminReports');
+  if (reportsPage) {
+    initReportsPage();
+    return;
+  }
+
   const exportBtn = document.getElementById('exportReportBtn');
   if (!exportBtn) return;
 
@@ -5036,6 +5282,645 @@ function initReports() {
     exportEvents('pdf');
     closeModal('exportModal');
   });
+}
+
+function initReportsPage() {
+  const eventsBody = document.getElementById('reportEventsMatchesBody');
+  const regsBody = document.getElementById('reportRegistrationsBody');
+  const msgBody = document.getElementById('reportMessagesBody');
+  const annBody = document.getElementById('reportAnnouncementsBody');
+  if (!eventsBody || !regsBody || !msgBody || !annBody) return;
+
+  const reportState = {
+    rowsPerPage: 15,
+    currentPage: {
+      eventsMatches: 1,
+      registrations: 1,
+      messages: 1,
+      announcements: 1
+    },
+    raw: {
+      eventsMatches: [],
+      registrations: [],
+      messages: [],
+      announcements: []
+    },
+    filtered: {
+      eventsMatches: [],
+      registrations: [],
+      messages: [],
+      announcements: []
+    }
+  };
+
+  const reportConfig = {
+    eventsMatches: {
+      bodyId: 'reportEventsMatchesBody',
+      pagerId: 'reportEventsMatchesPager',
+      empty: 'No events/matches found.',
+      columns: ['Event', 'Sport', 'Category', 'Stage', 'Teams', 'Schedule Date', 'Schedule Time', 'Location', 'Match Status'],
+      mapExport: (row) => ({
+        Event: row.event,
+        Sport: row.sport,
+        Category: row.category,
+        Stage: row.stage,
+        Teams: row.teams,
+        'Schedule Date': row.schedule_date,
+        'Schedule Time': row.schedule_time,
+        Location: row.location,
+        'Match Status': row.match_status
+      }),
+      renderRow: (row) =>
+        '<tr>' +
+          '<td>' + escapeAdminHTML(row.event) + '</td>' +
+          '<td>' + escapeAdminHTML(row.sport) + '</td>' +
+          '<td>' + escapeAdminHTML(row.category) + '</td>' +
+          '<td>' + escapeAdminHTML(row.stage) + '</td>' +
+          '<td>' + escapeAdminHTML(row.teams) + '</td>' +
+          '<td>' + escapeAdminHTML(row.schedule_date) + '</td>' +
+          '<td>' + escapeAdminHTML(row.schedule_time) + '</td>' +
+          '<td>' + escapeAdminHTML(row.location) + '</td>' +
+          '<td>' + escapeAdminHTML(row.match_status) + '</td>' +
+        '</tr>'
+    },
+    registrations: {
+      bodyId: 'reportRegistrationsBody',
+      pagerId: 'reportRegistrationsPager',
+      empty: 'No registrations found.',
+      columns: ['Team', 'Event', 'Sport', 'Representative', 'Course', 'Players', 'Status', 'Submitted'],
+      mapExport: (row) => ({
+        Team: row.team_name,
+        Event: row.event_name,
+        Sport: row.sport_name,
+        Representative: row.representative,
+        Course: row.course,
+        Players: row.players,
+        Status: row.status,
+        Submitted: row.submitted_at
+      }),
+      renderRow: (row) =>
+        '<tr>' +
+          '<td>' + escapeAdminHTML(row.team_name) + '</td>' +
+          '<td>' + escapeAdminHTML(row.event_name) + '</td>' +
+          '<td>' + escapeAdminHTML(row.sport_name) + '</td>' +
+          '<td>' + escapeAdminHTML(row.representative) + '</td>' +
+          '<td>' + escapeAdminHTML(row.course) + '</td>' +
+          '<td title="' + escapeAdminHTML(row.players) + '">' + escapeAdminHTML(row.players_preview) + '</td>' +
+          '<td>' + escapeAdminHTML(row.status) + '</td>' +
+          '<td>' + escapeAdminHTML(row.submitted_at) + '</td>' +
+        '</tr>'
+    },
+    messages: {
+      bodyId: 'reportMessagesBody',
+      pagerId: 'reportMessagesPager',
+      empty: 'No contact messages found.',
+      columns: ['Name', 'Email', 'Subject', 'Message', 'Status', 'Submitted'],
+      mapExport: (row) => ({
+        Name: row.full_name,
+        Email: row.email,
+        Subject: row.subject,
+        Message: row.message,
+        Status: row.status,
+        Submitted: row.submitted_at
+      }),
+      renderRow: (row) =>
+        '<tr>' +
+          '<td>' + escapeAdminHTML(row.full_name) + '</td>' +
+          '<td>' + escapeAdminHTML(row.email) + '</td>' +
+          '<td>' + escapeAdminHTML(row.subject) + '</td>' +
+          '<td title="' + escapeAdminHTML(row.message) + '">' + escapeAdminHTML(row.message_preview) + '</td>' +
+          '<td>' + escapeAdminHTML(row.status) + '</td>' +
+          '<td>' + escapeAdminHTML(row.submitted_at) + '</td>' +
+        '</tr>'
+    },
+    announcements: {
+      bodyId: 'reportAnnouncementsBody',
+      pagerId: 'reportAnnouncementsPager',
+      empty: 'No announcements found.',
+      columns: ['Title', 'Message', 'Date'],
+      mapExport: (row) => ({
+        Title: row.title,
+        Message: row.message,
+        Date: row.date
+      }),
+      renderRow: (row) =>
+        '<tr>' +
+          '<td>' + escapeAdminHTML(row.title) + '</td>' +
+          '<td title="' + escapeAdminHTML(row.message) + '">' + escapeAdminHTML(row.message_preview) + '</td>' +
+          '<td>' + escapeAdminHTML(row.date) + '</td>' +
+        '</tr>'
+    }
+  };
+
+  const shortenText = (value, max = 72) => {
+    const text = String(value || '').trim();
+    if (text.length <= max) return text;
+    return text.slice(0, max - 3) + '...';
+  };
+
+  const playerDisplayName = (p) => {
+    if (!p || typeof p !== 'object') return '';
+    if (p.name) return String(p.name).trim();
+    if (p.full_name) return String(p.full_name).trim();
+    const first = String(p.first_name || '').trim();
+    const last = String(p.last_name || '').trim();
+    return (first + ' ' + last).trim();
+  };
+
+  const formatDateForReport = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return raw;
+    return dt.toLocaleDateString();
+  };
+
+  const formatTimeForReport = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    if (!raw.includes(':')) return raw;
+    const dt = new Date('1970-01-01T' + raw);
+    if (Number.isNaN(dt.getTime())) return raw;
+    return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getMatchStageLabel = (match) => {
+    const stage = String(match.bracket_stage || '').trim();
+    const label = String(match.label || '').trim();
+    if (stage && label) return stage + ' - ' + label;
+    if (label) return label;
+    if (stage) return stage;
+    const round = Number(match.round || 0);
+    return round ? 'Round ' + round : '-';
+  };
+
+  const escapeXml = (value) => String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+  const toExcelColumn = (index) => {
+    let n = index + 1;
+    let name = '';
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      name = String.fromCharCode(65 + rem) + name;
+      n = Math.floor((n - rem - 1) / 26);
+    }
+    return name;
+  };
+
+  const crc32 = (input) => {
+    const table = crc32.table || (crc32.table = (() => {
+      const t = new Uint32Array(256);
+      for (let i = 0; i < 256; i += 1) {
+        let c = i;
+        for (let j = 0; j < 8; j += 1) {
+          c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        t[i] = c >>> 0;
+      }
+      return t;
+    })());
+
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < input.length; i += 1) {
+      crc = table[(crc ^ input[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  };
+
+  const zipFiles = (files, mimeType) => {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+
+    const now = new Date();
+    const dosTime = ((now.getHours() & 0x1F) << 11) | ((now.getMinutes() & 0x3F) << 5) | ((Math.floor(now.getSeconds() / 2)) & 0x1F);
+    const dosDate = ((((now.getFullYear() - 1980) & 0x7F) << 9) | (((now.getMonth() + 1) & 0x0F) << 5) | (now.getDate() & 0x1F));
+
+    files.forEach((file) => {
+      const nameBytes = enc.encode(file.name);
+      const dataBytes = typeof file.data === 'string' ? enc.encode(file.data) : file.data;
+      const size = dataBytes.length;
+      const crc = crc32(dataBytes);
+
+      const localHeader = new Uint8Array(30 + nameBytes.length);
+      const localView = new DataView(localHeader.buffer);
+      localView.setUint32(0, 0x04034B50, true);
+      localView.setUint16(4, 20, true);
+      localView.setUint16(6, 0, true);
+      localView.setUint16(8, 0, true);
+      localView.setUint16(10, dosTime, true);
+      localView.setUint16(12, dosDate, true);
+      localView.setUint32(14, crc, true);
+      localView.setUint32(18, size, true);
+      localView.setUint32(22, size, true);
+      localView.setUint16(26, nameBytes.length, true);
+      localView.setUint16(28, 0, true);
+      localHeader.set(nameBytes, 30);
+
+      parts.push(localHeader, dataBytes);
+
+      const centralHeader = new Uint8Array(46 + nameBytes.length);
+      const centralView = new DataView(centralHeader.buffer);
+      centralView.setUint32(0, 0x02014B50, true);
+      centralView.setUint16(4, 20, true);
+      centralView.setUint16(6, 20, true);
+      centralView.setUint16(8, 0, true);
+      centralView.setUint16(10, 0, true);
+      centralView.setUint16(12, dosTime, true);
+      centralView.setUint16(14, dosDate, true);
+      centralView.setUint32(16, crc, true);
+      centralView.setUint32(20, size, true);
+      centralView.setUint32(24, size, true);
+      centralView.setUint16(28, nameBytes.length, true);
+      centralView.setUint16(30, 0, true);
+      centralView.setUint16(32, 0, true);
+      centralView.setUint16(34, 0, true);
+      centralView.setUint16(36, 0, true);
+      centralView.setUint32(38, 0, true);
+      centralView.setUint32(42, offset, true);
+      centralHeader.set(nameBytes, 46);
+
+      central.push(centralHeader);
+      offset += localHeader.length + size;
+    });
+
+    const centralSize = central.reduce((sum, chunk) => sum + chunk.length, 0);
+    const end = new Uint8Array(22);
+    const endView = new DataView(end.buffer);
+    endView.setUint32(0, 0x06054B50, true);
+    endView.setUint16(4, 0, true);
+    endView.setUint16(6, 0, true);
+    endView.setUint16(8, files.length, true);
+    endView.setUint16(10, files.length, true);
+    endView.setUint32(12, centralSize, true);
+    endView.setUint32(16, offset, true);
+    endView.setUint16(20, 0, true);
+
+    return new Blob([...parts, ...central, end], { type: mimeType });
+  };
+
+  const createXlsxBlob = (headers, rows, sheetName) => {
+    const safeSheetName = String(sheetName || 'Report').replace(/[\\/*?:\[\]]/g, '').slice(0, 31) || 'Report';
+    const allRows = [headers, ...rows.map((row) => headers.map((h) => String(row[h] == null ? '' : row[h])) )];
+
+    const sheetRowsXml = allRows.map((cells, rowIndex) => {
+      const rowNumber = rowIndex + 1;
+      const cellsXml = cells.map((cellValue, colIndex) => {
+        const ref = toExcelColumn(colIndex) + rowNumber;
+        return '<c r="' + ref + '" t="inlineStr"><is><t>' + escapeXml(cellValue) + '</t></is></c>';
+      }).join('');
+      return '<row r="' + rowNumber + '">' + cellsXml + '</row>';
+    }).join('');
+
+    const contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '</Types>';
+
+    const rootRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>';
+
+    const workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheets><sheet name="' + escapeXml(safeSheetName) + '" sheetId="1" r:id="rId1"/></sheets>' +
+      '</workbook>';
+
+    const workbookRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '</Relationships>';
+
+    const worksheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetData>' + sheetRowsXml + '</sheetData>' +
+      '</worksheet>';
+
+    return zipFiles([
+      { name: '[Content_Types].xml', data: contentTypesXml },
+      { name: '_rels/.rels', data: rootRelsXml },
+      { name: 'xl/workbook.xml', data: workbookXml },
+      { name: 'xl/_rels/workbook.xml.rels', data: workbookRelsXml },
+      { name: 'xl/worksheets/sheet1.xml', data: worksheetXml }
+    ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  };
+
+  const renderPager = (key) => {
+    const config = reportConfig[key];
+    if (!config || !config.pagerId) return;
+
+    const pager = document.getElementById(config.pagerId);
+    if (!pager) return;
+
+    const totalRows = (reportState.filtered[key] || []).length;
+    if (!totalRows) {
+      pager.innerHTML = '';
+      return;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalRows / reportState.rowsPerPage));
+    const page = Math.min(Math.max(1, reportState.currentPage[key] || 1), totalPages);
+    reportState.currentPage[key] = page;
+
+    const start = (page - 1) * reportState.rowsPerPage + 1;
+    const end = Math.min(totalRows, page * reportState.rowsPerPage);
+
+    pager.innerHTML =
+      '<div class="report-pager-info">Showing ' + start + '-' + end + ' of ' + totalRows + ' rows</div>' +
+      '<div class="report-pager-actions">' +
+        '<button type="button" class="report-page-btn" data-page-action="prev" data-report-key="' + key + '" ' + (page <= 1 ? 'disabled' : '') + '>Previous</button>' +
+        '<span class="report-page-current">Page ' + page + ' of ' + totalPages + '</span>' +
+        '<button type="button" class="report-page-btn" data-page-action="next" data-report-key="' + key + '" ' + (page >= totalPages ? 'disabled' : '') + '>Next</button>' +
+      '</div>';
+  };
+
+  const applyFiltersAndRender = (key) => {
+    const config = reportConfig[key];
+    if (!config) return;
+
+    const filterEls = document.querySelectorAll('.report-filter[data-report-key="' + key + '"]');
+    const filters = Array.from(filterEls).map((el) => ({
+      field: String(el.getAttribute('data-field') || ''),
+      value: String(el.value || '').trim().toLowerCase()
+    })).filter((f) => f.field);
+
+    const filteredRows = reportState.raw[key].filter((row) => {
+      return filters.every((f) => {
+        if (!f.value) return true;
+        const hay = String(row[f.field] == null ? '' : row[f.field]).toLowerCase();
+        return hay.includes(f.value);
+      });
+    });
+
+    reportState.filtered[key] = filteredRows;
+
+    const body = document.getElementById(config.bodyId);
+    if (!body) return;
+
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / reportState.rowsPerPage));
+    const currentPage = Math.min(Math.max(1, reportState.currentPage[key] || 1), totalPages);
+    reportState.currentPage[key] = currentPage;
+
+    if (!filteredRows.length) {
+      body.innerHTML = '<tr><td colspan="' + config.columns.length + '" class="report-empty">' + config.empty + '</td></tr>';
+      renderPager(key);
+      return;
+    }
+
+    const start = (currentPage - 1) * reportState.rowsPerPage;
+    const pagedRows = filteredRows.slice(start, start + reportState.rowsPerPage);
+    body.innerHTML = pagedRows.map(config.renderRow).join('');
+    renderPager(key);
+  };
+
+  const exportRows = (key, format) => {
+    const config = reportConfig[key];
+    if (!config) return;
+
+    const rows = (reportState.filtered[key] || []).map(config.mapExport);
+    if (!rows.length) {
+      adminToast('No rows to export for this table.', 'warning');
+      return;
+    }
+
+    const headers = Object.keys(rows[0]);
+    const exportDate = new Date().toISOString().slice(0, 10);
+    const safeKey = key.toLowerCase();
+
+    if (format === 'csv') {
+      const lines = [
+        headers.map((h) => '"' + h.replace(/"/g, '""') + '"').join(','),
+        ...rows.map((row) => headers.map((h) => '"' + String(row[h] || '').replace(/"/g, '""') + '"').join(','))
+      ];
+      downloadBlob(lines.join('\n'), safeKey + '_' + exportDate + '.csv', 'text/csv');
+      adminToast('Report exported as CSV.');
+      return;
+    }
+
+    if (format === 'excel') {
+      const xlsxBlob = createXlsxBlob(headers, rows, key + ' Report');
+      downloadBlob(xlsxBlob, safeKey + '_' + exportDate + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      adminToast('Report exported as XLSX.');
+      return;
+    }
+
+    if (format === 'pdf') {
+      const win = window.open('', '_blank');
+      if (!win) {
+        adminToast('Allow pop-ups to export PDF.', 'error');
+        return;
+      }
+
+      const headerCells = headers.map((h) =>
+        '<th style="background:#1f3a8a;color:#fff;padding:8px 10px;text-align:left;font-size:11px;">' + escapeAdminHTML(h) + '</th>'
+      ).join('');
+
+      const bodyRows = rows.map((row, index) =>
+        '<tr style="background:' + (index % 2 === 0 ? '#f8faff' : '#ffffff') + ';">' +
+          headers.map((h) => '<td style="padding:7px 10px;font-size:11px;border-bottom:1px solid #e6ebf8;">' + escapeAdminHTML(String(row[h] || '')) + '</td>').join('') +
+        '</tr>'
+      ).join('');
+
+      win.document.write('<!DOCTYPE html><html><head><title>Report Export</title><style>body{font-family:Arial,sans-serif;margin:24px;color:#1f2937;}h2{margin:0 0 12px;}table{width:100%;border-collapse:collapse;}button{margin-top:14px;padding:8px 14px;border:none;background:#1f3a8a;color:#fff;border-radius:6px;cursor:pointer;}@media print{button{display:none;}}</style></head><body>' +
+        '<h2>' + escapeAdminHTML(key) + ' Report</h2>' +
+        '<div style="margin-bottom:10px;color:#64748b;font-size:12px;">Generated: ' + exportDate + '</div>' +
+        '<table><thead><tr>' + headerCells + '</tr></thead><tbody>' + bodyRows + '</tbody></table>' +
+        '<button onclick="window.print()">Print / Save PDF</button>' +
+        '</body></html>');
+      win.document.close();
+      adminToast('PDF preview opened in a new tab.');
+    }
+  };
+
+  const bindReportControls = () => {
+    document.querySelectorAll('.report-filter').forEach((input) => {
+      const key = input.getAttribute('data-report-key');
+      if (!key) return;
+      const handler = () => {
+        reportState.currentPage[key] = 1;
+        applyFiltersAndRender(key);
+      };
+      input.addEventListener('input', handler);
+      input.addEventListener('change', handler);
+    });
+
+    document.addEventListener('click', (event) => {
+      const btn = event.target.closest('.report-page-btn');
+      if (!btn) return;
+
+      const key = btn.getAttribute('data-report-key');
+      const action = btn.getAttribute('data-page-action');
+      if (!key || !action || !reportConfig[key]) return;
+
+      const totalRows = (reportState.filtered[key] || []).length;
+      const totalPages = Math.max(1, Math.ceil(totalRows / reportState.rowsPerPage));
+      const page = reportState.currentPage[key] || 1;
+
+      if (action === 'prev' && page > 1) {
+        reportState.currentPage[key] = page - 1;
+        applyFiltersAndRender(key);
+      }
+
+      if (action === 'next' && page < totalPages) {
+        reportState.currentPage[key] = page + 1;
+        applyFiltersAndRender(key);
+      }
+    });
+
+    document.querySelectorAll('.report-export-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-report-key');
+        const format = btn.getAttribute('data-export-format');
+        if (!key || !format) return;
+        exportRows(key, format);
+      });
+    });
+  };
+
+  const loadReportData = async () => {
+    try {
+      const [eventsRes, regRes, msgRes] = await Promise.all([
+        fetch('../api/events/read.php'),
+        fetch('../api/registrations/read.php'),
+        fetch('../api/contact/read-messages.php')
+      ]);
+
+      const [eventsJson, regJson, msgJson] = await Promise.all([
+        parseApiJson(eventsRes),
+        parseApiJson(regRes),
+        parseApiJson(msgRes)
+      ]);
+
+      const events = eventsJson.success && Array.isArray(eventsJson.data) ? eventsJson.data : [];
+      const regs = regJson.success && Array.isArray(regJson.data) ? regJson.data : [];
+      const msgs = msgJson.success && Array.isArray(msgJson.data) ? msgJson.data : [];
+
+      const bracketData = await Promise.all(events.map(async (event) => {
+        try {
+          const res = await fetch('../api/brackets/read.php?event_id=' + encodeURIComponent(String(event.id || '')));
+          return await parseApiJson(res);
+        } catch {
+          return null;
+        }
+      }));
+
+      const eventsMatchesRows = [];
+      events.forEach((event, idx) => {
+        const bracketJson = bracketData[idx];
+        const matches = bracketJson && bracketJson.success && bracketJson.data && Array.isArray(bracketJson.data.matches)
+          ? bracketJson.data.matches
+          : [];
+
+        const eventDate = formatDateForReport(event.event_start_date || event.created_at || '');
+        const eventTime = formatTimeForReport(event.event_start_date ? String(event.event_start_date).split(' ')[1] || '' : '');
+
+        if (!matches.length) {
+          eventsMatchesRows.push({
+            event: String(event.title || '-'),
+            sport: String(event.sport_name || '-'),
+            category: String(event.category || '-'),
+            stage: String(event.status || '-'),
+            teams: '-',
+            schedule_date: eventDate,
+            schedule_time: eventTime,
+            location: String(event.location || '-'),
+            match_status: 'No Matches'
+          });
+          return;
+        }
+
+        matches.forEach((match) => {
+          const team1 = match.team1 && match.team1.name ? String(match.team1.name) : '-';
+          const team2 = match.team2 && match.team2.name ? String(match.team2.name) : '-';
+          eventsMatchesRows.push({
+            event: String(event.title || '-'),
+            sport: String(event.sport_name || '-'),
+            category: String(event.category || '-'),
+            stage: getMatchStageLabel(match),
+            teams: team1 + ' vs ' + team2,
+            schedule_date: formatDateForReport(match.date || event.event_start_date || ''),
+            schedule_time: formatTimeForReport(match.time || ''),
+            location: String(match.location || event.location || '-'),
+            match_status: String(match.status || 'Pending')
+          });
+        });
+      });
+
+      const registrationRows = regs.map((reg) => {
+        const players = Array.isArray(reg.players) ? reg.players : [];
+        const playerNames = players
+          .map(playerDisplayName)
+          .filter(Boolean);
+        const representative = String(reg.representative_name || '').trim() ||
+          (String(reg.representative_first_name || '').trim() + ' ' + String(reg.representative_last_name || '').trim()).trim();
+
+        const playersLabel = playerNames.length
+          ? playerNames.join(', ')
+          : 'None';
+
+        return {
+          team_name: String(reg.team_name || '-'),
+          event_name: String(reg.event_name || '-'),
+          sport_name: String(reg.sport_name || '-'),
+          representative: representative || '-',
+          course: String(reg.representative_course_name || '-'),
+          players: playersLabel,
+          players_preview: shortenText(playersLabel, 52),
+          status: String(reg.status || '-'),
+          submitted_at: String(reg.submitted_at || '-')
+        };
+      });
+
+      const messageRows = msgs.map((msg) => ({
+        full_name: String(msg.full_name || '-'),
+        email: String(msg.email || '-'),
+        subject: String(msg.subject || '-'),
+        message: String(msg.message || '-'),
+        message_preview: shortenText(msg.message || '-', 68),
+        status: msg.is_read ? 'Read' : 'Unread',
+        submitted_at: String(msg.submitted_at || '-')
+      }));
+
+      const ann = (typeof DataStore !== 'undefined' && DataStore.getAnnouncements)
+        ? DataStore.getAnnouncements()
+        : [];
+      const announcementRows = Array.isArray(ann) ? ann.map((item) => ({
+        title: String(item.title || '-'),
+        message: String(item.message || '-'),
+        message_preview: shortenText(item.message || '-', 84),
+        date: String(item.date || '-')
+      })) : [];
+
+      reportState.raw.eventsMatches = eventsMatchesRows;
+      reportState.raw.registrations = registrationRows;
+      reportState.raw.messages = messageRows;
+      reportState.raw.announcements = announcementRows;
+
+      applyFiltersAndRender('eventsMatches');
+      applyFiltersAndRender('registrations');
+      applyFiltersAndRender('messages');
+      applyFiltersAndRender('announcements');
+    } catch (err) {
+      adminToast(err.message || 'Failed to load reports data.', 'error');
+      eventsBody.innerHTML = '<tr><td colspan="9" class="report-empty">Unable to load report data.</td></tr>';
+      regsBody.innerHTML = '<tr><td colspan="8" class="report-empty">Unable to load report data.</td></tr>';
+      msgBody.innerHTML = '<tr><td colspan="6" class="report-empty">Unable to load report data.</td></tr>';
+      annBody.innerHTML = '<tr><td colspan="3" class="report-empty">Unable to load report data.</td></tr>';
+    }
+  };
+
+  bindReportControls();
+  loadReportData();
 }
 
 function exportEventsRows() {

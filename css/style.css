@@ -1015,8 +1015,8 @@ h1, h2, h3, h4 { line-height: 1.2; }
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: linear-gradient(90deg, #fff3e0, #ffe7c2);
-  border-bottom: 1px solid #e7d6b5;
+  background: #eef4ff;
+  border-bottom: 1px solid #d8e4fb;
 }
 
 .news-standings-title {
@@ -1029,7 +1029,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .news-live-indicator {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #7d4a00;
+  color: #3f4c70;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1051,52 +1051,57 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .news-standings-card .standings-icons-row {
   padding: 8px 10px;
-  background: #f3f7ff;
-  color: #5a6688;
+  background: #cad6ee;
+  color: #3f4c70;
 }
 
 .news-standings-card .standings-labels-row {
   padding: 4px 10px;
-  background: #f8fbff;
-  color: #7d88a6;
-  border-bottom: 1px solid #e2e9f8;
+  background: #cad6ee;
+  color: #3f4c70;
+  border-bottom: 1px solid #becae4;
 }
 
 .news-standings-card .standing-row {
   padding: 8px 10px;
-  border-bottom: 1px solid #e7edf9;
+  border-bottom: 1px solid #e0e8f7;
+  color: #27355e;
 }
 
-.news-standings-card .standings-icons-row > div,
-.news-standings-card .standings-labels-row > div,
-.news-standings-card #newsStandingsBody .standing-row > div {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+.news-standings-card #newsStandingsBody .standing-row:nth-child(even) {
+  background: #f7faff;
 }
 
-.news-standings-card .standings-icons-row > div:first-child,
-.news-standings-card .standings-labels-row > div:first-child,
-.news-standings-card #newsStandingsBody .standing-row > div:first-child {
-  justify-content: flex-start;
-  text-align: left;
+.news-standings-card #newsStandingsBody .standing-row:nth-child(odd) {
+  background: #fff;
 }
 
 .news-standings-card .standing-row:hover {
-  background: #f2f7ff;
+  background: #eef4ff;
+}
+
+.news-standings-card .standings-labels-row .label-gold {
+  color: #b8860b;
+}
+
+.news-standings-card .standings-labels-row .label-silver {
+  color: #6d778f;
+}
+
+.news-standings-card .standings-labels-row .label-bronze {
+  color: #9a5e2f;
 }
 
 .news-standings-card .standing-row.top-1 {
-  background: rgba(255, 215, 0, .18);
+  background: rgba(184, 134, 11, .08) !important;
 }
 
 .news-standings-card .standing-row.top-2 {
-  background: rgba(192, 192, 192, .14);
+  background: rgba(109, 119, 143, .08) !important;
 }
 
 .news-standings-card .standing-row.top-3 {
-  background: rgba(205, 127, 50, .14);
+  background: rgba(154, 94, 47, .08) !important;
 }
 
 .news-standings-footer {
@@ -1105,6 +1110,18 @@ h1, h2, h3, h4 { line-height: 1.2; }
   color: #6a7698;
   font-size: .72rem;
   text-align: right;
+}
+
+.news-standings-card .medal-gold {
+  color: #b8860b !important;
+}
+
+.news-standings-card .medal-silver {
+  color: #6d778f !important;
+}
+
+.news-standings-card .medal-bronze {
+  color: #9a5e2f !important;
 }
 
 .highlights-gallery {
@@ -1403,6 +1420,30 @@ h1, h2, h3, h4 { line-height: 1.2; }
   background: #fbfcff;
 }
 
+.announcements-scroll-container {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.announcements-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.announcements-scroll-container::-webkit-scrollbar-track {
+  background: #f1f5fb;
+  border-radius: 10px;
+}
+
+.announcements-scroll-container::-webkit-scrollbar-thumb {
+  background: #c5d0e8;
+  border-radius: 10px;
+}
+
+.announcements-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #a8b8d8;
+}
+
 .winners-list {
   display: flex;
   flex-direction: column;
@@ -1530,6 +1571,139 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .leaderboard-medal.empty {
   color: var(--text-muted);
+}
+
+.course-leaderboard-card {
+  border: 1px solid #e4eaf7;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f9fbff 0%, #f1f6ff 100%);
+}
+
+.course-leaderboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #eef4ff;
+  border-bottom: 1px solid #d8e4fb;
+  flex-wrap: wrap;
+}
+
+.course-leaderboard-toolbar h4 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+.course-year-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.course-year-filter label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #4f5f8e;
+}
+
+.course-year-filter select {
+  min-width: 110px;
+  border: 1px solid #c8d8f8;
+  border-radius: 8px;
+  background: #fff;
+  color: #203163;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.course-leaderboard-table-wrap {
+  overflow-x: auto;
+}
+
+.course-leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 420px;
+}
+
+.course-leaderboard-table thead tr {
+  background: #cad6ee;
+}
+
+.course-leaderboard-table th {
+  color: #3f4c70;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #becae4;
+  text-align: center;
+}
+
+.course-leaderboard-table th:first-child,
+.course-leaderboard-table td:first-child {
+  text-align: left;
+}
+
+.course-leaderboard-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #e0e8f7;
+  color: #27355e;
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.course-leaderboard-table tbody tr:nth-child(even) {
+  background: #f7faff;
+}
+
+.course-leaderboard-table tbody tr:hover {
+  background: #eef4ff;
+}
+
+.course-leaderboard-table td.medal-gold {
+  color: #b8860b;
+  font-weight: 800;
+}
+
+.course-leaderboard-table td.medal-silver {
+  color: #6d778f;
+  font-weight: 800;
+}
+
+.course-leaderboard-table td.medal-bronze {
+  color: #9a5e2f;
+  font-weight: 800;
+}
+
+/* Sport column in news page medal standings */
+.news-stn-sport {
+  background: #cad6ee;
+  color: #3f4c70;
+  font-weight: 800;
+  font-size: 0.84rem;
+}
+
+.course-leaderboard-empty {
+  text-align: center;
+  color: #66739b;
+  font-style: italic;
+}
+
+.course-leaderboard-footer {
+  padding: 8px 12px;
+  border-top: 1px solid #dce5f7;
+  color: #5e6d93;
+  font-size: .74rem;
+  text-align: right;
 }
 
 .leader-row {
@@ -1983,6 +2157,33 @@ h1, h2, h3, h4 { line-height: 1.2; }
 
 .bracket-board-scroll {
   min-width: 600px;
+}
+
+/* Events bracket stage — layout/scroll only; card/line styles come from bracket.css */
+.event-bracket-stage {
+  background: #2a2f3b;
+  border: 1px solid #3a4050;
+  border-radius: 10px;
+  padding: 12px;
+  overflow: auto;
+  max-height: 80vh;
+}
+
+.event-bracket-section {
+  margin-bottom: 28px;
+}
+
+.event-bracket-section:last-child {
+  margin-bottom: 0;
+}
+
+.event-bracket-section-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #f2f4f9;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
 }
 
 .playoff-bracket {

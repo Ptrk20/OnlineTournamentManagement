@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports - CvSU Bacoor Sports Hub Admin</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/admin.css" />
+</head>
+<body class="admin-body" id="adminReports">
+
+  <aside class="sidebar" id="adminSidebar">
+    <div class="sidebar-brand"><div class="brand-icon">&#127942;</div><div class="brand-text"><span class="name">CvSU Bacoor Sports Hub</span><span class="sub">Admin Portal</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html"><span class="nav-icon">&#128200;</span> Dashboard</a>
+      <a href="events.html"><span class="nav-icon">&#127942;</span> Events</a>
+      <a href="register.html"><span class="nav-icon">&#128100;</span> Registration</a>
+      <a href="news.html"><span class="nav-icon">&#128240;</span> News</a>
+      <a href="announcement.html"><span class="nav-icon">&#128276;</span> Announcements</a>
+      <a href="reports.html" class="active"><span class="nav-icon">&#128202;</span> Reports</a>
+      <div class="nav-label">Users</div>
+      <a href="manage-users.html"><span class="nav-icon">&#128101;</span> Manage Users</a>
+      <div class="nav-label">Content</div>
+      <a href="about.html"><span class="nav-icon">&#128203;</span> About Us</a>
+      <a href="contact.html"><span class="nav-icon">&#128140;</span> Contact Messages <span class="nav-badge" id="msgBadge">0</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../index.html"><span>&#127760;</span> View Website</a>
+    </div>
+  </aside>
+
+  <div class="admin-main" id="adminMain">
+    <header class="admin-topbar">
+      <div class="topbar-left">
+        <button class="topbar-toggle" id="sidebarToggle"><span></span><span></span><span></span></button>
+        <span class="page-title">Reports</span>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" title="Notifications"><span>&#128276;</span><span class="notif-dot"></span></button>
+        <div class="topbar-user"><div class="avatar" data-user-initials>A</div><div class="u-info"><span class="name" data-user-name>Administrator</span><span class="role" data-user-role>Admin</span></div><div class="user-popup" id="userPopup"><div class="user-popup-header"><div class="avatar" data-user-initials>A</div><div><span class="popup-name" data-user-name>Administrator</span><span class="popup-role" data-user-role>Admin</span></div></div><div class="user-popup-divider"></div><div class="user-popup-footer"><button class="popup-logout-btn" data-logout>&#128682; Logout</button></div></div></div>
+      </div>
+    </header>
+
+    <main class="admin-content">
+      <div class="reports-page-head">
+        <h2>Downloadable Reports</h2>
+        <p>View and export data in CSV, Excel, or PDF. Use column filters in each table to narrow results.</p>
+      </div>
+
+      <div class="admin-card report-card">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#127942;</span> Events, Matches, and Schedules</h3>
+          <div class="report-actions">
+            <button class="btn report-export-btn" data-report-key="eventsMatches" data-export-format="csv">CSV</button>
+            <button class="btn report-export-btn" data-report-key="eventsMatches" data-export-format="excel">Excel</button>
+            <button class="btn report-export-btn" data-report-key="eventsMatches" data-export-format="pdf">PDF</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table report-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Sport</th>
+                <th>Category</th>
+                <th>Stage</th>
+                <th>Teams</th>
+                <th>Schedule Date</th>
+                <th>Schedule Time</th>
+                <th>Location</th>
+                <th>Match Status</th>
+              </tr>
+              <tr class="report-filters-row">
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="event" placeholder="Filter event" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="sport" placeholder="Filter sport" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="category" placeholder="Filter category" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="stage" placeholder="Filter stage" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="teams" placeholder="Filter teams" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="schedule_date" placeholder="Filter date" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="schedule_time" placeholder="Filter time" /></th>
+                <th><input class="report-filter" data-report-key="eventsMatches" data-field="location" placeholder="Filter location" /></th>
+                <th>
+                  <select class="report-filter" data-report-key="eventsMatches" data-field="match_status">
+                    <option value="">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="Completed">Completed</option>
+                  </select>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="reportEventsMatchesBody">
+              <tr><td colspan="9" class="report-empty">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="report-pager" id="reportEventsMatchesPager"></div>
+      </div>
+
+      <div class="admin-card report-card">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128100;</span> Registrations (Including Players)</h3>
+          <div class="report-actions">
+            <button class="btn report-export-btn" data-report-key="registrations" data-export-format="csv">CSV</button>
+            <button class="btn report-export-btn" data-report-key="registrations" data-export-format="excel">Excel</button>
+            <button class="btn report-export-btn" data-report-key="registrations" data-export-format="pdf">PDF</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table report-table">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>Event</th>
+                <th>Sport</th>
+                <th>Representative</th>
+                <th>Course</th>
+                <th>Players</th>
+                <th>Status</th>
+                <th>Submitted</th>
+              </tr>
+              <tr class="report-filters-row">
+                <th><input class="report-filter" data-report-key="registrations" data-field="team_name" placeholder="Filter team" /></th>
+                <th><input class="report-filter" data-report-key="registrations" data-field="event_name" placeholder="Filter event" /></th>
+                <th><input class="report-filter" data-report-key="registrations" data-field="sport_name" placeholder="Filter sport" /></th>
+                <th><input class="report-filter" data-report-key="registrations" data-field="representative" placeholder="Filter representative" /></th>
+                <th><input class="report-filter" data-report-key="registrations" data-field="course" placeholder="Filter course" /></th>
+                <th><input class="report-filter" data-report-key="registrations" data-field="players" placeholder="Filter players" /></th>
+                <th>
+                  <select class="report-filter" data-report-key="registrations" data-field="status">
+                    <option value="">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </th>
+                <th><input class="report-filter" data-report-key="registrations" data-field="submitted_at" placeholder="Filter submitted" /></th>
+              </tr>
+            </thead>
+            <tbody id="reportRegistrationsBody">
+              <tr><td colspan="8" class="report-empty">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="report-pager" id="reportRegistrationsPager"></div>
+      </div>
+
+      <div class="admin-card report-card">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128140;</span> Contact Messages</h3>
+          <div class="report-actions">
+            <button class="btn report-export-btn" data-report-key="messages" data-export-format="csv">CSV</button>
+            <button class="btn report-export-btn" data-report-key="messages" data-export-format="excel">Excel</button>
+            <button class="btn report-export-btn" data-report-key="messages" data-export-format="pdf">PDF</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table report-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Subject</th>
+                <th>Message</th>
+                <th>Status</th>
+                <th>Submitted</th>
+              </tr>
+              <tr class="report-filters-row">
+                <th><input class="report-filter" data-report-key="messages" data-field="full_name" placeholder="Filter name" /></th>
+                <th><input class="report-filter" data-report-key="messages" data-field="email" placeholder="Filter email" /></th>
+                <th><input class="report-filter" data-report-key="messages" data-field="subject" placeholder="Filter subject" /></th>
+                <th><input class="report-filter" data-report-key="messages" data-field="message" placeholder="Filter message" /></th>
+                <th>
+                  <select class="report-filter" data-report-key="messages" data-field="status">
+                    <option value="">All</option>
+                    <option value="Read">Read</option>
+                    <option value="Unread">Unread</option>
+                  </select>
+                </th>
+                <th><input class="report-filter" data-report-key="messages" data-field="submitted_at" placeholder="Filter submitted" /></th>
+              </tr>
+            </thead>
+            <tbody id="reportMessagesBody">
+              <tr><td colspan="6" class="report-empty">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="report-pager" id="reportMessagesPager"></div>
+      </div>
+
+      <div class="admin-card report-card">
+        <div class="admin-card-header">
+          <h3><span class="ch-icon">&#128276;</span> Announcements</h3>
+          <div class="report-actions">
+            <button class="btn report-export-btn" data-report-key="announcements" data-export-format="csv">CSV</button>
+            <button class="btn report-export-btn" data-report-key="announcements" data-export-format="excel">Excel</button>
+            <button class="btn report-export-btn" data-report-key="announcements" data-export-format="pdf">PDF</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table report-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Message</th>
+                <th>Date</th>
+              </tr>
+              <tr class="report-filters-row">
+                <th><input class="report-filter" data-report-key="announcements" data-field="title" placeholder="Filter title" /></th>
+                <th><input class="report-filter" data-report-key="announcements" data-field="message" placeholder="Filter message" /></th>
+                <th><input class="report-filter" data-report-key="announcements" data-field="date" placeholder="Filter date" /></th>
+              </tr>
+            </thead>
+            <tbody id="reportAnnouncementsBody">
+              <tr><td colspan="3" class="report-empty">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="report-pager" id="reportAnnouncementsPager"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/admin.js"></script>
+</body>
+</html>

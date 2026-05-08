@@ -521,16 +521,20 @@ function renderHomeNewsSlide(n) {
 
 function initNewsPage() {
   const gallery = document.getElementById('highlightsGallery');
-  const tallyBody = document.getElementById('newsStandingsBody');
-  const tallyUpdated = document.getElementById('newsStandingsUpdated');
   const winnersList = document.getElementById('winnersAnnouncementList');
-  const leaderboardList = document.getElementById('sportLeaderboardList');
-  const leaderboardFilters = document.getElementById('leaderboardSportFilters');
+  const courseLeaderboardBody = document.getElementById('courseLeaderboardBody');
+  const courseLeaderboardYear = document.getElementById('courseLeaderboardYear');
+  const courseLeaderboardUpdated = document.getElementById('courseLeaderboardUpdated');
 
-  if (!gallery || !tallyBody || !winnersList || !leaderboardList || !leaderboardFilters) return;
+  if (!gallery || !winnersList || !courseLeaderboardBody || !courseLeaderboardYear) return;
 
   const STANDINGS_KEY = 'otm_sportsfest_standings';
-  const state = { sport: 'vol', highlightIndex: 0, highlightTimer: null };
+  const state = {
+    highlightIndex: 0,
+    highlightTimer: null,
+    courseSummaryByYear: {},
+    allYears: []
+  };
 
   const defaultStandings = [
     { course: 'IT',      vol: 'G', bbl: 'S', fut: '-', bad: 'G',  g: 2, s: 1, b: 0 },
@@ -554,13 +558,6 @@ function initNewsPage() {
     return [...data].sort(function (a, b) {
       return b.g !== a.g ? b.g - a.g : b.s !== a.s ? b.s - a.s : b.b - a.b;
     });
-  }
-
-  function getSportValuePoints(val) {
-    if (val === 'G') return 3;
-    if (val === 'S') return 2;
-    if (val === 'B') return 1;
-    return 0;
   }
 
   function medalTag(val) {
@@ -731,6 +728,9 @@ function initNewsPage() {
   }
 
   function renderTally() {
+    const tallyBody = document.getElementById('newsStandingsBody');
+    const tallyUpdated = document.getElementById('newsStandingsUpdated');
+    if (!tallyBody) return;
     const sorted = sortOverall(getStandings());
     tallyBody.innerHTML = sorted.map(function (row, i) {
       const rank = i + 1;
@@ -754,7 +754,7 @@ function initNewsPage() {
     }
   }
 
-  function getWinnerAnnouncements() {
+  async function getWinnerAnnouncements() {
     let items = [];
 
     try {
@@ -767,21 +767,45 @@ function initNewsPage() {
     }
 
     if (!items.length) {
-      const announcements = DataStore.getAnnouncements();
-      items = announcements
-        .filter(function (a) {
-          const text = (a.title || '') + ' ' + (a.message || a.content || '');
-          return /winner|champion|championship/i.test(text);
-        })
-        .map(function (a) {
-          return {
-            title: a.title || 'Winner Announcement',
-            winner: a.winner || 'TBA',
-            sport: a.sport || 'General',
-            date: a.date || '',
-            smsStatus: 'Sent'
-          };
-        });
+      try {
+        const resp = await fetch('api/announcements/read.php');
+        const data = await parsePublicApiJson(resp);
+        if (data.success && Array.isArray(data.data)) {
+          items = data.data
+            .filter(function (a) {
+              const text = (a.title || '') + ' ' + (a.message || '');
+              return /winner|champion|championship/i.test(text);
+            })
+            .map(function (a) {
+              return {
+                title: a.title || 'Winner Announcement',
+                winner: a.title || 'TBA',
+                sport: 'Sports',
+                date: a.created_at ? new Date(a.created_at).toLocaleDateString() : '',
+                smsStatus: a.sms_sent ? 'Sent' : 'Page Only'
+              };
+            });
+        }
+      } catch {
+        // fallback to DataStore
+        const announcements = DataStore.getAnnouncements();
+        if (Array.isArray(announcements)) {
+          items = announcements
+            .filter(function (a) {
+              const text = (a.title || '') + ' ' + (a.message || a.content || '');
+              return /winner|champion|championship/i.test(text);
+            })
+            .map(function (a) {
+              return {
+                title: a.title || 'Winner Announcement',
+                winner: a.winner || 'TBA',
+                sport: a.sport || 'General',
+                date: a.date || '',
+                smsStatus: 'Sent'
+              };
+            });
+        }
+      }
     }
 
     if (!items.length) {
@@ -795,64 +819,284 @@ function initNewsPage() {
     return items;
   }
 
-  function renderWinnerAnnouncements() {
-    const items = getWinnerAnnouncements();
-    winnersList.innerHTML = items.map(function (item) {
-      const smsClass = String(item.smsStatus || '').toLowerCase() === 'sent' ? 'sent' : 'queued';
-      return '<div class="winner-item">' +
-        '<h4>' + escapeHTML(item.title || 'Winner Announcement') + '</h4>' +
-        '<p><strong>Winner:</strong> ' + escapeHTML(item.winner || 'TBA') + ' <span class="dot">•</span> <strong>Sport:</strong> ' + escapeHTML(item.sport || 'General') + '</p>' +
-        '<div class="winner-meta"><span>' + escapeHTML(item.date || '') + '</span><span class="sms-pill ' + smsClass + '">SMS ' + escapeHTML(item.smsStatus || 'Queued') + '</span></div>' +
-      '</div>';
-    }).join('');
-  }
+  async function getAllAnnouncements() {
+    let items = [];
 
-  function renderSportLeaderboard() {
-    const rows = getStandings().map(function (row) {
-      const medal = row[state.sport];
-      const points = getSportValuePoints(medal);
-      return {
-        course: row.course,
-        medal: medal,
-        points: points,
-        placed: points > 0  // True if course has a medal in this sport
-      };
-    }).sort(function (a, b) {
-      return b.points - a.points || a.course.localeCompare(b.course);
-    });
-
-    leaderboardList.innerHTML = rows.map(function (row, idx) {
-      // Only show medal emoji for placers, empty for non-placers
-      let medalDisplay = '';
-      if (row.placed) {
-        // Show medal emoji based on medal type
-        if (row.medal === 'G') medalDisplay = '&#129351;';  // Gold medal
-        else if (row.medal === 'S') medalDisplay = '&#129352;';  // Silver medal
-        else if (row.medal === 'B') medalDisplay = '&#129353;';  // Bronze medal
+    try {
+      const resp = await fetch('api/announcements/read.php');
+      const data = await parsePublicApiJson(resp);
+      if (data.success && Array.isArray(data.data)) {
+        items = data.data.map(function (a) {
+          return {
+            title: a.title || 'Announcement',
+            message: a.message || '',
+            date: a.created_at ? new Date(a.created_at).toLocaleDateString() : ''
+          };
+        });
       }
-      
-      return '<div class="leaderboard-row">' +
-        '<div class="leaderboard-course">' + escapeHTML(row.course) + '</div>' +
-        '<div class="leaderboard-medal">' + medalDisplay + '</div>' +
+    } catch (err) {
+      console.error('Error fetching announcements:', err);
+      // fallback to stored announcements
+      try {
+        const announcements = DataStore.getAnnouncements();
+        if (Array.isArray(announcements)) {
+          items = announcements.map(function (a) {
+            return {
+              title: a.title || 'Announcement',
+              message: a.message || a.content || '',
+              date: a.date || ''
+            };
+          });
+        }
+      } catch {
+        // no fallback available
+      }
+    }
+
+    if (!items.length) {
+      items = [
+        { title: 'Welcome to Sports Hub', message: 'Stay tuned for upcoming tournaments and events!', date: 'Apr 28, 2026' }
+      ];
+    }
+
+    return items;
+  }
+
+  async function renderWinnerAnnouncements() {
+    const items = await getAllAnnouncements();
+    winnersList.innerHTML = items.map(function (item) {
+      return '<div class="winner-item">' +
+        '<h4>' + escapeHTML(item.title || 'Announcement') + '</h4>' +
+        '<p>' + escapeHTML(item.message || '') + '</p>' +
+        '<div class="winner-meta"><span>' + escapeHTML(item.date || '') + '</span></div>' +
       '</div>';
     }).join('');
+  }
 
-    leaderboardFilters.querySelectorAll('[data-sport]').forEach(function (btn) {
-      btn.classList.toggle('active', btn.getAttribute('data-sport') === state.sport);
+  function getEventYear(ev) {
+    const raw = ev.event_start_date || ev.event_end_date || ev.created_at || '';
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) return String(date.getFullYear());
+    const match = String(raw).match(/(\d{4})/);
+    return match ? match[1] : 'Unknown';
+  }
+
+  function getLosingTeamId(match) {
+    const winner = Number(match.winner_team_id || 0);
+    const t1 = Number(match.team1 && match.team1.id || 0);
+    const t2 = Number(match.team2 && match.team2.id || 0);
+    if (!winner || !t1 || !t2) return null;
+    return winner === t1 ? t2 : winner === t2 ? t1 : null;
+  }
+
+  function pickFinalMatch(matches) {
+    const main = matches.filter(function (m) {
+      return String(m.bracket_stage || 'main').toLowerCase() !== 'third_place' && Number(m.winner_team_id || 0) > 0;
+    });
+
+    if (!main.length) return null;
+
+    main.sort(function (a, b) {
+      const roundDiff = Number(b.round || 0) - Number(a.round || 0);
+      if (roundDiff) return roundDiff;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    return main[0];
+  }
+
+  function pickThirdPlaceMatch(matches) {
+    const third = matches.filter(function (m) {
+      return String(m.bracket_stage || '').toLowerCase() === 'third_place' && Number(m.winner_team_id || 0) > 0;
+    });
+
+    if (!third.length) return null;
+
+    third.sort(function (a, b) {
+      const roundDiff = Number(b.round || 0) - Number(a.round || 0);
+      if (roundDiff) return roundDiff;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    return third[0];
+  }
+
+  function initYearBuckets(bucket, year) {
+    if (!bucket[year]) bucket[year] = {};
+    if (!bucket.ALL) bucket.ALL = {};
+  }
+
+  function ensureDepartmentRow(byDept, department) {
+    if (!byDept[department]) {
+      byDept[department] = { department: department, gold: 0, silver: 0, bronze: 0 };
+    }
+  }
+
+  function addMedal(summary, year, department, medalType) {
+    initYearBuckets(summary, year);
+    ensureDepartmentRow(summary[year], department);
+    ensureDepartmentRow(summary.ALL, department);
+
+    summary[year][department][medalType] += 1;
+    summary.ALL[department][medalType] += 1;
+  }
+
+  function sortDepartmentRows(rows) {
+    return rows.sort(function (a, b) {
+      if (b.gold !== a.gold) return b.gold - a.gold;
+      if (b.silver !== a.silver) return b.silver - a.silver;
+      if (b.bronze !== a.bronze) return b.bronze - a.bronze;
+      return a.department.localeCompare(b.department);
     });
   }
 
-  leaderboardFilters.addEventListener('click', function (e) {
-    const btn = e.target.closest('[data-sport]');
-    if (!btn) return;
-    state.sport = btn.getAttribute('data-sport');
-    renderSportLeaderboard();
+  function renderCourseLeaderboardRows(yearKey) {
+    const selected = state.courseSummaryByYear[yearKey] || {};
+    const rows = Object.values(selected);
+
+    if (!rows.length) {
+      courseLeaderboardBody.innerHTML = '<tr><td colspan="4" class="course-leaderboard-empty">No departments found for the selected year.</td></tr>';
+      return;
+    }
+
+    const sorted = sortDepartmentRows(rows);
+    courseLeaderboardBody.innerHTML = sorted.map(function (row) {
+      return '<tr>' +
+        '<td>' + escapeHTML(row.department) + '</td>' +
+        '<td class="medal-gold">' + row.gold + '</td>' +
+        '<td class="medal-silver">' + row.silver + '</td>' +
+        '<td class="medal-bronze">' + row.bronze + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function renderCourseYearFilter() {
+    const options = ['<option value="ALL">All</option>'].concat(state.allYears.map(function (year) {
+      return '<option value="' + escapeHTML(year) + '">' + escapeHTML(year) + '</option>';
+    }));
+
+    courseLeaderboardYear.innerHTML = options.join('');
+    courseLeaderboardYear.value = state.allYears[0] || 'ALL';
+    renderCourseLeaderboardRows(courseLeaderboardYear.value);
+  }
+
+  async function loadCourseLeaderboardFromEventsAndMatches() {
+    try {
+      const [eventsRes, registrationsRes] = await Promise.all([
+        fetch('api/events/read.php'),
+        fetch('api/registrations/read.php')
+      ]);
+
+      const eventsJson = await parsePublicApiJson(eventsRes);
+      const registrationsJson = await parsePublicApiJson(registrationsRes);
+
+      const events = eventsJson && eventsJson.success && Array.isArray(eventsJson.data) ? eventsJson.data : [];
+      const registrations = registrationsJson && registrationsJson.success && Array.isArray(registrationsJson.data) ? registrationsJson.data : [];
+
+      const departmentByRegistrationId = {};
+      const allDepartments = new Set();
+      registrations.forEach(function (reg) {
+        const regId = Number(reg.id || 0);
+        if (!regId) return;
+        const department = String(reg.representative_course_name || '').trim() || 'Unassigned';
+        departmentByRegistrationId[regId] = department;
+        allDepartments.add(department);
+      });
+
+      const bracketJsonByEvent = await Promise.all(events.map(async function (event) {
+        const eventId = Number(event.id || 0);
+        if (!eventId) return null;
+        try {
+          const res = await fetch('api/brackets/read.php?event_id=' + encodeURIComponent(String(eventId)));
+          return await parsePublicApiJson(res);
+        } catch {
+          return null;
+        }
+      }));
+
+      const summary = {};
+      const years = new Set();
+
+      events.forEach(function (event, idx) {
+        const bracketJson = bracketJsonByEvent[idx];
+        if (!bracketJson || !bracketJson.success || !bracketJson.data || !Array.isArray(bracketJson.data.matches)) return;
+
+        const matches = bracketJson.data.matches;
+        if (!matches.length) return;
+
+        const year = getEventYear(event);
+        years.add(year);
+
+        // Initialize all departments for this year with 0 medals
+        if (!summary[year]) {
+          summary[year] = {};
+        }
+        allDepartments.forEach(function (dept) {
+          if (!summary[year][dept]) {
+            summary[year][dept] = { department: dept, gold: 0, silver: 0, bronze: 0 };
+          }
+        });
+
+        const finalMatch = pickFinalMatch(matches);
+        if (!finalMatch) return;
+
+        const goldRegId = Number(finalMatch.winner_team_id || 0);
+        const silverRegId = Number(getLosingTeamId(finalMatch) || 0);
+        const bronzeMatch = pickThirdPlaceMatch(matches);
+        const bronzeRegId = bronzeMatch ? Number(bronzeMatch.winner_team_id || 0) : 0;
+
+        if (goldRegId && departmentByRegistrationId[goldRegId]) {
+          addMedal(summary, year, departmentByRegistrationId[goldRegId], 'gold');
+        }
+        if (silverRegId && departmentByRegistrationId[silverRegId]) {
+          addMedal(summary, year, departmentByRegistrationId[silverRegId], 'silver');
+        }
+        if (bronzeRegId && departmentByRegistrationId[bronzeRegId]) {
+          addMedal(summary, year, departmentByRegistrationId[bronzeRegId], 'bronze');
+        }
+      });
+
+      // Initialize ALL bucket with all departments
+      if (!summary.ALL) {
+        summary.ALL = {};
+      }
+      allDepartments.forEach(function (dept) {
+        if (!summary.ALL[dept]) {
+          summary.ALL[dept] = { department: dept, gold: 0, silver: 0, bronze: 0 };
+        }
+      });
+
+      state.courseSummaryByYear = summary;
+      state.allYears = Array.from(years).sort(function (a, b) { return String(b).localeCompare(String(a)); });
+      renderCourseYearFilter();
+
+      if (courseLeaderboardUpdated) {
+        courseLeaderboardUpdated.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    } catch {
+      courseLeaderboardBody.innerHTML = '<tr><td colspan="4" class="course-leaderboard-empty">Unable to load leaderboard data.</td></tr>';
+    }
+  }
+
+  courseLeaderboardYear.addEventListener('change', function () {
+    renderCourseLeaderboardRows(courseLeaderboardYear.value || 'ALL');
   });
 
   renderHighlights();
-  renderTally();
-  renderWinnerAnnouncements();
-  renderSportLeaderboard();
+  renderWinnerAnnouncements().catch(err => console.error('Error rendering announcements:', err));
+  initMedalStandingsWidget({
+    tbodyId:   'newsStandingsTable',
+    yearSelId: 'newsStandingsYear',
+    updatedId: 'newsStandingsUpdated',
+    allYearOpt: false,
+    poll:       false,
+    sportClass: 'news-stn-sport',
+    goldClass:  'medal-gold',
+    silverClass:'medal-silver',
+    bronzeClass:'medal-bronze',
+    emptyClass: 'course-leaderboard-empty'
+  });
+  loadCourseLeaderboardFromEventsAndMatches();
 }
 
 /* =============================================
@@ -1057,7 +1301,7 @@ async function loadPublicContactInfo() {
 
   try {
     const res = await fetch('api/contact/read-info.php');
-    const data = await res.json();
+    const data = await parsePublicApiJson(res);
 
     if (data.success) {
       const addressHtml = data.address
@@ -1182,19 +1426,20 @@ function statusBadge(status) {
 
 async function parsePublicApiJson(response) {
   const text = await response.text();
-  let parsed;
+  if (!response.ok) {
+    try {
+      const parsedError = JSON.parse(text);
+      throw new Error(parsedError.message || 'Request failed.');
+    } catch {
+      throw new Error('Request failed with status ' + response.status + '.');
+    }
+  }
 
   try {
-    parsed = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
-    throw new Error('Invalid API response.');
+    throw new Error('Invalid JSON response: ' + text.slice(0, 120));
   }
-
-  if (!response.ok) {
-    throw new Error(parsed.message || 'Request failed.');
-  }
-
-  return parsed;
 }
 
 /* =============================================
@@ -1271,7 +1516,7 @@ const ContactAPI = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await resp.json();
+      const data = await parsePublicApiJson(resp);
       return data.success === true;
     } catch {
       return false;
@@ -1311,17 +1556,24 @@ const Auth = {
 })();
 
 /* =============================================
-   13. MEDAL STANDINGS — DB-synced per sport+category
-       Columns: Sport | Category | Gold | Silver | Bronze
+   13. MEDAL STANDINGS — shared widget
    ============================================= */
-(function initStandings() {
-  var tbody    = document.getElementById('standingsBody');
-  var ts       = document.getElementById('lastUpdated');
-  var indicator = document.getElementById('liveIndicator');
-  var yearSel  = document.getElementById('standingsYear');
+function initMedalStandingsWidget(opts) {
+  var tbody     = document.getElementById(opts.tbodyId);
+  var yearSel   = opts.yearSelId   ? document.getElementById(opts.yearSelId)   : null;
+  var tsEl      = opts.updatedId   ? document.getElementById(opts.updatedId)   : null;
+  var indicator = opts.indicatorId ? document.getElementById(opts.indicatorId) : null;
   if (!tbody) return;
 
-  var allEvents = [];
+  var sportClass  = opts.sportClass  || 'stn-sport';
+  var goldClass   = opts.goldClass   || 'stn-gold';
+  var silverClass = opts.silverClass || 'stn-silver';
+  var bronzeClass = opts.bronzeClass || 'stn-bronze';
+  var emptyClass  = opts.emptyClass  || 'stn-placeholder';
+  var showIcon    = opts.sportIcon !== false && !opts.sportClass; // icons on homepage only
+  var allYearOpt  = !!opts.allYearOpt;
+
+  var allEvents    = [];
   var selectedYear = '';
 
   function populateYears(events) {
@@ -1333,20 +1585,24 @@ const Auth = {
       if (y && !isNaN(y) && years.indexOf(y) === -1) years.push(y);
     });
     years.sort(function (a, b) { return b - a; });
-    if (!years.length) {
-      selectedYear = '';
-      yearSel.innerHTML = '<option value="">No year</option>';
-      return;
-    }
 
-    // No 'All' option: default to latest year if current selection is missing.
-    if (!selectedYear || years.indexOf(Number(selectedYear)) === -1) {
-      selectedYear = String(years[0]);
+    if (allYearOpt) {
+      yearSel.innerHTML = '<option value="">All</option>' + years.map(function (y) {
+        return '<option value="' + y + '"' + (String(y) === selectedYear ? ' selected' : '') + '>' + y + '</option>';
+      }).join('');
+    } else {
+      if (!years.length) {
+        selectedYear = '';
+        yearSel.innerHTML = '<option value="">No year</option>';
+        return;
+      }
+      if (!selectedYear || years.indexOf(Number(selectedYear)) === -1) {
+        selectedYear = String(years[0]);
+      }
+      yearSel.innerHTML = years.map(function (y) {
+        return '<option value="' + y + '"' + (String(y) === selectedYear ? ' selected' : '') + '>' + y + '</option>';
+      }).join('');
     }
-
-    yearSel.innerHTML = years.map(function (y) {
-      return '<option value="' + y + '"' + (String(y) === selectedYear ? ' selected' : '') + '>' + y + '</option>';
-    }).join('');
   }
 
   function filterByYear(events) {
@@ -1380,7 +1636,6 @@ const Auth = {
     }
 
     if (String(bracket.tournament_type || '').toLowerCase().includes('round')) {
-      // Round robin: compute wins-based standings
       var stats = {};
       teams.forEach(function (t) {
         stats[t.id] = { wins: 0, losses: 0, forPts: 0, againstPts: 0 };
@@ -1411,11 +1666,9 @@ const Auth = {
       };
     }
 
-    // Elimination: find the Final match and bronze match
     var withWinner = matches.filter(function (m) { return !!m.winner_team_id; });
     if (!withWinner.length) return { gold: '-', silver: '-', bronze: '-' };
 
-    // Final = highest round in main bracket stage
     var mainWithWinner = withWinner.filter(function (m) {
       var stage = String(m.bracket_stage || '').toLowerCase();
       return !stage || stage === 'main' || stage === 'upper';
@@ -1428,7 +1681,6 @@ const Auth = {
 
     var goldId = finalMatch ? Number(finalMatch.winner_team_id) : 0;
     var gold   = goldId ? (teamMap[goldId] || '-') : '-';
-
     var silver = '-';
     if (finalMatch) {
       var t1id = finalMatch.team1 && Number(finalMatch.team1.id);
@@ -1436,8 +1688,6 @@ const Auth = {
       var silverId = goldId === t1id ? t2id : t1id;
       silver = silverId ? (teamMap[silverId] || '-') : '-';
     }
-
-    // Bronze = winner of 3rd place / bronze match
     var bronzeMatch = matches.find(function (m) {
       var label = String(m.label || m.bracket_stage || '').toLowerCase();
       return label.includes('3rd') || label.includes('third') || label.includes('bronze') || label.includes('place');
@@ -1446,51 +1696,40 @@ const Auth = {
     if (bronzeMatch && bronzeMatch.winner_team_id) {
       bronze = teamMap[Number(bronzeMatch.winner_team_id)] || '-';
     }
-
     return { gold: gold, silver: silver, bronze: bronze };
   }
 
   function sportIcon(name) {
     var n = String(name || '').toLowerCase();
-    if (n.includes('basketball'))  return '\uD83C\uDFC0'; // 🏀
-    if (n.includes('volleyball'))  return '\uD83C\uDFD0'; // 🏐
-    if (n.includes('futsal') || n.includes('football') || n.includes('soccer')) return '\u26BD'; // ⚽
-    if (n.includes('badminton'))   return '\uD83C\uDFF8'; // 🏸
-    if (n.includes('tennis'))      return '\uD83C\uDFBE'; // 🎾
-    if (n.includes('swimming'))    return '\uD83C\uDFCA'; // 🏊
-    if (n.includes('track') || n.includes('run') || n.includes('athlet')) return '\uD83C\uDFC3'; // 🏃
-    if (n.includes('chess'))       return '\u265E'; // ♞
-    if (n.includes('table tennis') || n.includes('pingpong')) return '\uD83C\uDFD3'; // 🏓
-    if (n.includes('baseball') || n.includes('softball')) return '\u26BE'; // ⚾
-    if (n.includes('boxing'))      return '\uD83E\uDD4A'; // 🥊
-    if (n.includes('archery'))     return '\uD83C\uDFF9'; // 🏹
-    return '\uD83C\uDFC5'; // 🏅 default
+    if (n.includes('basketball'))  return '\uD83C\uDFC0';
+    if (n.includes('volleyball'))  return '\uD83C\uDFD0';
+    if (n.includes('futsal') || n.includes('football') || n.includes('soccer')) return '\u26BD';
+    if (n.includes('badminton'))   return '\uD83C\uDFF8';
+    if (n.includes('tennis'))      return '\uD83C\uDFBE';
+    if (n.includes('swimming'))    return '\uD83C\uDFCA';
+    if (n.includes('track') || n.includes('run') || n.includes('athlet')) return '\uD83C\uDFC3';
+    if (n.includes('chess'))       return '\u265E';
+    if (n.includes('table tennis') || n.includes('pingpong')) return '\uD83C\uDFD3';
+    if (n.includes('baseball') || n.includes('softball')) return '\u26BE';
+    if (n.includes('boxing'))      return '\uD83E\uDD4A';
+    if (n.includes('archery'))     return '\uD83C\uDFF9';
+    return '\uD83C\uDFC5';
   }
 
-  async function loadStandings() {
+  async function load() {
     try {
       var evRes  = await fetch('api/events/read.php');
       var evJson = await parsePublicApiJson(evRes);
       allEvents  = (evJson.success && Array.isArray(evJson.data)) ? evJson.data : [];
       populateYears(allEvents);
-      await renderFromCache();
+      await render();
     } catch (err) {
       console.error('Medal standings error:', err);
-      tbody.innerHTML = '<tr><td colspan="5" class="stn-placeholder">Unable to load standings.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="' + emptyClass + '">Unable to load standings.</td></tr>';
     }
   }
 
-  window.updateStandings = function () { loadStandings(); };
-
-  function bindYearChange() {
-    if (!yearSel) return;
-    yearSel.addEventListener('change', function () {
-      selectedYear = yearSel.value;
-      renderFromCache();
-    });
-  }
-
-  async function renderFromCache() {
+  async function render() {
     var yearFiltered = filterByYear(allEvents);
     var relevant = yearFiltered.filter(function (ev) {
       var s = String(ev.status || '').toLowerCase();
@@ -1502,9 +1741,9 @@ const Auth = {
     setIndicator(hasOngoing);
 
     if (!relevant.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="stn-placeholder">No completed or ongoing events' +
+      tbody.innerHTML = '<tr><td colspan="5" class="' + emptyClass + '">No completed or ongoing events' +
         (selectedYear ? ' in ' + selectedYear : '') + '.</td></tr>';
-      if (ts) ts.textContent = '--';
+      if (tsEl) tsEl.textContent = '--';
       return;
     }
 
@@ -1528,6 +1767,21 @@ const Auth = {
       });
     });
 
+    // Deduplicate by sport+category — keep the entry with the most resolved medals
+    var dedupMap = {};
+    rows.forEach(function (r) {
+      var key = r.sport + '|' + r.category;
+      if (!dedupMap[key]) {
+        dedupMap[key] = r;
+      } else {
+        var prev = dedupMap[key];
+        var prevScore = (prev.gold !== '-' ? 1 : 0) + (prev.silver !== '-' ? 1 : 0) + (prev.bronze !== '-' ? 1 : 0);
+        var currScore = (r.gold !== '-' ? 1 : 0) + (r.silver !== '-' ? 1 : 0) + (r.bronze !== '-' ? 1 : 0);
+        if (currScore > prevScore) dedupMap[key] = r;
+      }
+    });
+    rows = Object.values(dedupMap);
+
     rows.sort(function (a, b) {
       return a.sport.localeCompare(b.sport) || a.category.localeCompare(b.category);
     });
@@ -1542,328 +1796,334 @@ const Auth = {
         var r = rows[i + k];
         html += '<tr>';
         if (k === 0) {
-          html += '<td class="stn-sport" rowspan="' + span + '"><span class="stn-sport-icon" aria-hidden="true">' + sportIcon(r.sport) + '</span>' + r.sport + '</td>';
+          html += '<td class="' + sportClass + '" rowspan="' + span + '">' +
+            (showIcon ? '<span class="stn-sport-icon" aria-hidden="true">' + sportIcon(r.sport) + '</span>' : '') +
+            r.sport + '</td>';
         }
         html +=
-          '<td class="stn-category">' + r.category + '</td>' +
-          '<td class="stn-gold">'   + r.gold   + '</td>' +
-          '<td class="stn-silver">' + r.silver + '</td>' +
-          '<td class="stn-bronze">' + r.bronze + '</td>' +
+          '<td' + (showIcon ? ' class="stn-category"' : ' style="text-align:left"') + '>' + r.category + '</td>' +
+          '<td class="' + goldClass   + '">' + r.gold   + '</td>' +
+          '<td class="' + silverClass + '">' + r.silver + '</td>' +
+          '<td class="' + bronzeClass + '">' + r.bronze + '</td>' +
         '</tr>';
       }
       i += span;
     }
     tbody.innerHTML = html;
-    if (ts) ts.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (tsEl) tsEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  if (yearSel) {
+    yearSel.addEventListener('change', function () {
+      selectedYear = yearSel.value;
+      render();
+    });
+  }
+
+  function start() {
+    load();
+    if (opts.poll) setInterval(load, 30000);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      bindYearChange();
-      loadStandings();
-      setInterval(loadStandings, 30000);
-    });
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    bindYearChange();
-    loadStandings();
-    setInterval(loadStandings, 30000);
+    start();
   }
-})();
+}
+
+window.updateStandings = function () {
+  // kept for backwards compat — homepage re-loads via its own interval
+};
+
+initMedalStandingsWidget({
+  tbodyId:     'standingsBody',
+  yearSelId:   'standingsYear',
+  updatedId:   'lastUpdated',
+  indicatorId: 'liveIndicator',
+  poll:        true
+});
 
 /* =============================================
    14. EVENTS BRACKET PAGE
    ============================================= */
 (function initEventsBracket() {
-  const courses = ['IT', 'CS', 'CRIM', 'HRM', 'BSM', 'BSEDUC', 'BSPSYCH'];
-  const sports = [
-    {
-      id: 'volleyball', label: 'Volleyball', icon: '&#127952;',
-      events: [
-        {
-          id: 'vol-current', name: 'Campus Volleyball League 2026', status: 'Ongoing',
-          bracket: {
-            Mens: {
-              upper: [
-                { round: 'Quarterfinal', a: 'IT', b: 'CS', score: '2-1' },
-                { round: 'Quarterfinal', a: 'CRIM', b: 'HRM', score: '2-0' },
-                { round: 'Semifinal', a: 'IT', b: 'CRIM', score: '1-2' }
-              ],
-              lower: [
-                { round: 'Lower R1', a: 'CS', b: 'HRM', score: '2-0' },
-                { round: 'Lower Final', a: 'CS', b: 'IT', score: '1-2' }
-              ]
-            },
-            Womens: {
-              upper: [
-                { round: 'Quarterfinal', a: 'BSM', b: 'BSEDUC', score: '2-0' },
-                { round: 'Quarterfinal', a: 'CS', b: 'BSPSYCH', score: '2-1' },
-                { round: 'Semifinal', a: 'BSM', b: 'CS', score: '1-2' }
-              ],
-              lower: [
-                { round: 'Lower R1', a: 'BSEDUC', b: 'BSPSYCH', score: '2-1' },
-                { round: 'Lower Final', a: 'BSEDUC', b: 'BSM', score: '0-2' }
-              ]
-            }
-          },
-          schedule: [
-            { datetime: 'Apr 28, 2026 09:00 AM', match: 'IT vs CS', venue: 'Main Gym', status: 'Ongoing' },
-            { datetime: 'Apr 28, 2026 01:00 PM', match: 'CRIM vs HRM', venue: 'Main Gym', status: 'Upcoming' },
-            { datetime: 'Apr 29, 2026 10:00 AM', match: 'Semifinal Match', venue: 'Main Gym', status: 'Upcoming' }
-          ]
-        },
-        {
-          id: 'vol-intramurals', name: 'Intramurals Volleyball Cup', status: 'Upcoming',
-          bracket: {
-            Mens: { upper: [{ round: 'Round 1', a: 'IT', b: 'BSM', score: 'TBD' }], lower: [] },
-            Womens: { upper: [{ round: 'Round 1', a: 'CS', b: 'BSEDUC', score: 'TBD' }], lower: [] }
-          },
-          schedule: [{ datetime: 'May 03, 2026 08:30 AM', match: 'IT vs BSM', venue: 'Covered Court', status: 'Upcoming' }]
-        }
-      ]
-    },
-    {
-      id: 'basketball', label: 'Basketball', icon: '&#127936;',
-      events: [
-        {
-          id: 'bsk-current', name: 'Campus Basketball Tournament 2026', status: 'Ongoing',
-          bracket: {
-            Mens: {
-              upper: [
-                { round: 'Quarterfinal', a: 'IT', b: 'CRIM', score: '78-74' },
-                { round: 'Quarterfinal', a: 'CS', b: 'HRM', score: '69-63' },
-                { round: 'Semifinal', a: 'IT', b: 'CS', score: '81-80' }
-              ],
-              lower: [
-                { round: 'Lower R1', a: 'CRIM', b: 'HRM', score: '75-71' },
-                { round: 'Lower Final', a: 'CRIM', b: 'CS', score: '66-70' }
-              ]
-            },
-            Womens: {
-              upper: [
-                { round: 'Quarterfinal', a: 'BSPSYCH', b: 'BSEDUC', score: '60-55' },
-                { round: 'Quarterfinal', a: 'BSM', b: 'CS', score: '54-59' }
-              ],
-              lower: [{ round: 'Lower Final', a: 'BSEDUC', b: 'BSM', score: '50-57' }]
-            }
-          },
-          schedule: [
-            { datetime: 'Apr 28, 2026 03:00 PM', match: 'IT vs CS', venue: 'Sports Center', status: 'Ongoing' },
-            { datetime: 'Apr 29, 2026 03:00 PM', match: 'CRIM vs CS', venue: 'Sports Center', status: 'Upcoming' },
-            { datetime: 'May 1, 2026 03:00 PM', match: 'CRIM vs HRM', venue: 'Sports Center', status: 'Upcoming' }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'futsal', label: 'Futsal', icon: '&#9917;',
-      events: [
-        {
-          id: 'fut-current', name: 'Campus Futsal Challenge', status: 'Ongoing',
-          bracket: {
-            Mens: {
-              upper: [
-                { round: 'Quarterfinal', a: 'IT', b: 'BSPSYCH', score: '3-1' },
-                { round: 'Quarterfinal', a: 'CRIM', b: 'BSM', score: '2-2 (4-3)' }
-              ],
-              lower: [{ round: 'Lower R1', a: 'BSPSYCH', b: 'BSM', score: '2-0' }]
-            },
-            Womens: {
-              upper: [
-                { round: 'Quarterfinal', a: 'CS', b: 'BSEDUC', score: '1-0' },
-                { round: 'Quarterfinal', a: 'HRM', b: 'BSM', score: '2-1' }
-              ],
-              lower: []
-            }
-          },
-          schedule: [
-            { datetime: 'Apr 30, 2026 09:00 AM', match: 'IT vs CRIM', venue: 'Open Field A', status: 'Upcoming' },
-            { datetime: 'Apr 30, 2026 11:00 AM', match: 'CS vs HRM', venue: 'Open Field A', status: 'Upcoming' }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'badminton', label: 'Badminton', icon: '&#127992;',
-      events: [
-        {
-          id: 'bad-current', name: 'Campus Badminton Open', status: 'Ongoing',
-          bracket: {
-            Mens: {
-              upper: [
-                { round: 'Upper R1', a: 'IT', b: 'HRM', score: '2-0' },
-                { round: 'Upper R1', a: 'CRIM', b: 'CS', score: '1-2' }
-              ],
-              lower: [{ round: 'Lower R1', a: 'HRM', b: 'CRIM', score: '2-1' }]
-            },
-            Womens: {
-              upper: [
-                { round: 'Upper R1', a: 'BSEDUC', b: 'BSPSYCH', score: '2-1' },
-                { round: 'Upper R1', a: 'BSM', b: 'CS', score: '0-2' }
-              ],
-              lower: [{ round: 'Lower R1', a: 'BSPSYCH', b: 'BSM', score: '2-0' }]
-            }
-          },
-          schedule: [
-            { datetime: 'Apr 28, 2026 08:00 AM', match: 'IT vs CS', venue: 'Badminton Hall 1', status: 'Ongoing' },
-            { datetime: 'Apr 28, 2026 10:00 AM', match: 'BSEDUC vs BSM', venue: 'Badminton Hall 2', status: 'Upcoming' }
-          ]
-        }
-      ]
-    }
-  ];
+  function normalizeToken(value) {
+    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
 
-  window.bracketData = { sports: sports, courses: courses };
-  window.initBracketUI = function() {
-    const sportsOptions = document.getElementById('sportsOptions');
-    const genderSwitch = document.getElementById('genderSwitch');
-    const eventFilter = document.getElementById('eventFilter');
-    const courseFilter = document.getElementById('courseFilter');
-    const bracketBoard = document.getElementById('bracketBoard');
-    const scheduleList = document.getElementById('scheduleList');
-    const scheduleViewToggle = document.getElementById('scheduleViewToggle');
-    const scheduleViewList = document.getElementById('scheduleViewList');
-    const scheduleViewCalendar = document.getElementById('scheduleViewCalendar');
-    const jumpScheduleBtn = document.getElementById('jumpScheduleBtn');
+  function normalizeCategory(value) {
+    return String(value || '').trim().toLowerCase();
+  }
 
-    if (!sportsOptions) return;
+  function statusRank(status) {
+    var s = String(status || '').toLowerCase();
+    if (s === 'ongoing') return 0;
+    if (s === 'upcoming') return 1;
+    if (s === 'completed') return 2;
+    return 3;
+  }
 
-    const state = {
-      sportId: sports[0].id,
-      gender: 'Mens',
+  function asArraySuccess(json) {
+    return json && json.success && Array.isArray(json.data) ? json.data : [];
+  }
+
+  function asObjectSuccess(json) {
+    return json && json.success && json.data ? json.data : null;
+  }
+
+  function safeImagePath(path) {
+    var value = String(path || '').trim();
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.indexOf('src/images') === 0 || value.indexOf('uploads') === 0 || value.indexOf('api/') === 0) return value;
+    if (value.indexOf('../') === 0) return value.slice(3);
+    return value;
+  }
+
+  window.initBracketUI = function () {
+    var sportsOptions = document.getElementById('sportsOptions');
+    var categorySwitch = document.getElementById('genderSwitch');
+    var eventFilter = document.getElementById('eventFilter');
+    var courseFilter = document.getElementById('courseFilter');
+    var bracketBoard = document.getElementById('bracketBoard');
+    var scheduleList = document.getElementById('scheduleList');
+    var scheduleViewToggle = document.getElementById('scheduleViewToggle');
+    var jumpScheduleBtn = document.getElementById('jumpScheduleBtn');
+
+    if (!sportsOptions || !eventFilter || !courseFilter || !bracketBoard || !scheduleList) return;
+
+    var state = {
+      sports: [],
+      eventsBySport: {},
+      bracketByEvent: {},
+      registrationCourseById: {},
+      seedMap: {},
+      sportId: null,
+      category: '',
       eventId: null,
       course: '',
       scheduleView: 'list',
       calendarYear: null,
       calendarMonth: null
     };
-    const sportImageById = {
-      volleyball: 'src/images/volleyball.png',
-      basketball: 'src/images/basketball.png',
-      futsal: 'src/images/futsal.png',
-      badminton: 'src/images/shuttlecock.png'
-    };
 
-    function getCurrentSport() { return sports.find(function (s) { return s.id === state.sportId; }) || sports[0]; }
-    function getCurrentEvent() {
-      var sport = getCurrentSport();
-      return sport.events.find(function (e) { return e.id === state.eventId; }) || sport.events[0];
-    }
-    function defaultEventIdForSport(sport) {
-      var ongoing = sport.events.find(function (ev) { return ev.status === 'Ongoing'; });
-      return (ongoing || sport.events[0]).id;
+    function currentSport() {
+      return state.sports.find(function (s) { return Number(s.id) === Number(state.sportId); }) || state.sports[0] || null;
     }
 
-    function renderSports() {
-      sportsOptions.innerHTML = sports.map(function (s) {
-        var active = s.id === state.sportId ? 'active' : '';
-        var imageSrc = sportImageById[s.id] || '';
-        return '<button type="button" class="sport-option ' + active + '" data-sport="' + s.id + '">' +
-          '<span class="sport-bubble"><img src="' + imageSrc + '" alt="' + s.label + '" /></span><span class="sport-label">' + s.label + '</span></button>';
-      }).join('');
-    }
-
-    function renderEventOptions() {
-      var sport = getCurrentSport();
-      eventFilter.innerHTML = sport.events.map(function (ev) {
-        return '<option value="' + ev.id + '">' + ev.name + ' (' + ev.status + ')</option>';
-      }).join('');
-      if (!sport.events.some(function (ev) { return ev.id === state.eventId; })) {
-        state.eventId = defaultEventIdForSport(sport);
-      }
-      eventFilter.value = state.eventId;
-    }
-
-    // Group flat match list into rounds: [ { roundName, matches: [{a,b,score,winner}] } ]
-    function groupIntoRounds(matches) {
-      var roundMap = [];
-      var seen = {};
-      matches.forEach(function (m) {
-        if (!seen[m.round]) { seen[m.round] = true; roundMap.push({ name: m.round, matches: [] }); }
-        roundMap[roundMap.length - 1].matches.push(m);
+    function filteredEvents() {
+      var list = state.eventsBySport[String(state.sportId)] || [];
+      if (!state.category) return list;
+      return list.filter(function (ev) {
+        return normalizeCategory(ev.category) === normalizeCategory(state.category);
       });
-      // re-group correctly
+    }
+
+    function currentEvent() {
+      var list = filteredEvents();
+      return list.find(function (ev) { return Number(ev.id) === Number(state.eventId); }) || list[0] || null;
+    }
+
+    function teamSeedMap(bracket) {
       var map = {};
-      var order = [];
-      matches.forEach(function (m) {
-        if (!map[m.round]) { map[m.round] = []; order.push(m.round); }
-        map[m.round].push(m);
+      (bracket.teams || []).forEach(function (team, idx) {
+        map[String(team.id)] = idx + 1;
       });
-      return order.filter(function(r, i) { return order.indexOf(r) === i; }).map(function (r) {
-        return { name: r, matches: map[r] };
-      });
+      return map;
     }
 
-    function matchCard(m, courseFilter) {
-      var highlight = courseFilter && (m.a === courseFilter || m.b === courseFilter);
-      var scores = m.score !== 'TBD' ? m.score.split('-') : ['', ''];
-      var scoreA = scores[0] ? scores[0].trim() : '';
-      var scoreB = scores[1] ? scores[1].trim() : '';
-      // Determine winner by score (only if both numeric)
-      var numA = parseInt(scoreA), numB = parseInt(scoreB);
-      var winA = !isNaN(numA) && !isNaN(numB) && numA > numB;
-      var winB = !isNaN(numA) && !isNaN(numB) && numB > numA;
-      return '<div class="playoff-match' + (highlight ? ' highlighted' : '') + '">' +
-        '<div class="playoff-team' + (winA ? ' winner' : '') + '">' +
-          '<span class="playoff-name">' + m.a + '</span>' +
-          '<span class="playoff-score">' + (scoreA || '—') + '</span>' +
-        '</div>' +
-        '<div class="playoff-team' + (winB ? ' winner' : '') + '">' +
-          '<span class="playoff-name">' + m.b + '</span>' +
-          '<span class="playoff-score">' + (scoreB || '—') + '</span>' +
-        '</div>' +
+    function winnerSide(match) {
+      var winnerId = Number(match.winner_team_id || 0);
+      if (!winnerId) return 0;
+      var t1 = match.team1 && Number(match.team1.id || 0);
+      var t2 = match.team2 && Number(match.team2.id || 0);
+      if (winnerId && t1 && winnerId === t1) return 1;
+      if (winnerId && t2 && winnerId === t2) return 2;
+      return 0;
+    }
+
+    function teamCourse(team) {
+      if (!team || team.id == null) return '';
+      return state.registrationCourseById[String(team.id)] || '';
+    }
+
+    function matchPassesCourse(match) {
+      if (!state.course) return true;
+      var c1 = teamCourse(match.team1);
+      var c2 = teamCourse(match.team2);
+      return c1 === state.course || c2 === state.course;
+    }
+
+    function roundLabel(matchCount, roundNo) {
+      if (matchCount === 1) return 'Finals';
+      if (matchCount === 2) return 'Semifinals';
+      if (matchCount === 4) return 'Quarterfinals';
+      if (matchCount === 8) return 'Round of 16';
+      if (matchCount === 16) return 'Round of 32';
+      return 'Round ' + roundNo;
+    }
+
+    function renderEliminationSection(sectionTitle, sectionMatches, thirdPlaceMatches) {
+      if (!sectionMatches.length && !thirdPlaceMatches.length) return '';
+
+      var CARD_HEIGHT = 86;
+      var BASE_GAP = 14;
+      var UNIT = CARD_HEIGHT + BASE_GAP;
+
+      var roundsMap = {};
+      sectionMatches.forEach(function (m) {
+        var key = Number(m.round || 1);
+        if (!roundsMap[key]) roundsMap[key] = [];
+        roundsMap[key].push(m);
+      });
+
+      var rounds = Object.keys(roundsMap).map(Number).sort(function (a, b) { return a - b; });
+
+      var roundsHtml = rounds.map(function (r, roundIndex) {
+        var roundMatches = roundsMap[r] || [];
+        var hasConnectors = roundIndex < rounds.length - 1;
+        var step = UNIT * Math.pow(2, roundIndex);
+        var offset = Math.max(0, (step / 2) - (CARD_HEIGHT / 2));
+        var prevBottom = 0;
+
+        var matchHtml = roundMatches.map(function (match, matchIndex) {
+          var win = winnerSide(match);
+          var t1Name = match.team1 ? (match.team1.name || 'Team') : 'TBD';
+          var t2Name = match.team2 ? (match.team2.name || 'Team') : 'TBD';
+          var s1 = Number(match.score1 || 0);
+          var s2 = Number(match.score2 || 0);
+          var seed1 = match.team1 ? (state.seedMap[String(match.team1.id)] || '-') : '-';
+          var seed2 = match.team2 ? (state.seedMap[String(match.team2.id)] || '-') : '-';
+          var y = offset + (matchIndex * step);
+          var marginTop = Math.max(0, Math.round(y - prevBottom));
+          prevBottom = y + CARD_HEIGHT;
+
+          return '<div class="match-wrap" style="margin-top:' + marginTop + 'px;--pair-step:' + step + 'px;">' +
+            '<div class="match-card">' +
+              '<div class="team-row' + (win === 1 ? ' winner' : '') + '">' +
+                '<div class="seed-col">' + escapeHTML(String(seed1)) + '</div>' +
+                '<div class="team-name">' + escapeHTML(t1Name) + '</div>' +
+                '<div class="team-score">' + s1 + '</div>' +
+              '</div>' +
+              '<div class="team-row' + (win === 2 ? ' winner' : '') + '">' +
+                '<div class="seed-col">' + escapeHTML(String(seed2)) + '</div>' +
+                '<div class="team-name">' + escapeHTML(t2Name) + '</div>' +
+                '<div class="team-score">' + s2 + '</div>' +
+              '</div>' +
+            '</div>' +
+            (hasConnectors && matchIndex % 2 === 0 ? '<span class="connector-out"></span>' : '') +
+          '</div>';
+        }).join('');
+
+        // Attach third-place matches at the bottom of the last round column
+        var isLastRound = roundIndex === rounds.length - 1;
+        var thirdHtml = '';
+        if (isLastRound && thirdPlaceMatches.length) {
+          thirdHtml = thirdPlaceMatches.map(function (tp) {
+            var win = winnerSide(tp);
+            var t1Name = tp.team1 ? (tp.team1.name || 'Team') : 'TBD';
+            var t2Name = tp.team2 ? (tp.team2.name || 'Team') : 'TBD';
+            var s1 = Number(tp.score1 || 0);
+            var s2 = Number(tp.score2 || 0);
+            var seed1 = tp.team1 ? (state.seedMap[String(tp.team1.id)] || '-') : '-';
+            var seed2 = tp.team2 ? (state.seedMap[String(tp.team2.id)] || '-') : '-';
+            return '<div class="round-subtitle" style="margin-top:' + BASE_GAP + 'px;">3rd Place Match</div>' +
+              '<div class="match-wrap" style="padding-right:52px;">' +
+                '<div class="match-card">' +
+                  '<div class="team-row' + (win === 1 ? ' winner' : '') + '">' +
+                    '<div class="seed-col">' + escapeHTML(String(seed1)) + '</div>' +
+                    '<div class="team-name">' + escapeHTML(t1Name) + '</div>' +
+                    '<div class="team-score">' + s1 + '</div>' +
+                  '</div>' +
+                  '<div class="team-row' + (win === 2 ? ' winner' : '') + '">' +
+                    '<div class="seed-col">' + escapeHTML(String(seed2)) + '</div>' +
+                    '<div class="team-name">' + escapeHTML(t2Name) + '</div>' +
+                    '<div class="team-score">' + s2 + '</div>' +
+                  '</div>' +
+                '</div>' +
+              '</div>';
+          }).join('');
+        }
+
+        var label = roundMatches[0] && roundMatches[0].label
+          ? roundMatches[0].label
+          : roundLabel(roundMatches.length, r);
+
+        return '<div class="round' + (hasConnectors ? ' has-connectors' : '') + '">' +
+          '<h3 class="round-title">' + escapeHTML(label) + '</h3>' +
+          '<div class="round-matches">' + matchHtml + thirdHtml + '</div>' +
+        '</div>';
+      }).join('');
+
+      return '<div class="event-bracket-section">' +
+        (sectionTitle ? '<div class="event-bracket-section-title">' + escapeHTML(sectionTitle) + '</div>' : '') +
+        '<div class="rounds">' + roundsHtml + '</div>' +
       '</div>';
     }
 
-    function renderBracket() {
-      var ev = getCurrentEvent();
-      var group = ev.bracket[state.gender];
-      var allMatches = (group.upper || []).concat(group.lower || []);
-      var filtered = state.course
-        ? allMatches.filter(function (m) { return m.a === state.course || m.b === state.course; })
-        : allMatches;
+    function renderRoundRobinSection(matches) {
+      if (!matches.length) return '';
+      var cards = matches.map(function (match) {
+        var win = winnerSide(match);
+        var t1Name = match.team1 ? (match.team1.name || 'Team') : 'TBD';
+        var t2Name = match.team2 ? (match.team2.name || 'Team') : 'TBD';
+        var s1 = Number(match.score1 || 0);
+        var s2 = Number(match.score2 || 0);
+        var seed1 = match.team1 ? (state.seedMap[String(match.team1.id)] || '-') : '-';
+        var seed2 = match.team2 ? (state.seedMap[String(match.team2.id)] || '-') : '-';
+        return '<div class="match-wrap" style="padding-right:0;">' +
+          '<div class="match-card">' +
+            '<div class="team-row' + (win === 1 ? ' winner' : '') + '">' +
+              '<div class="seed-col">' + escapeHTML(String(seed1)) + '</div>' +
+              '<div class="team-name">' + escapeHTML(t1Name) + '</div>' +
+              '<div class="team-score">' + s1 + '</div>' +
+            '</div>' +
+            '<div class="team-row' + (win === 2 ? ' winner' : '') + '">' +
+              '<div class="seed-col">' + escapeHTML(String(seed2)) + '</div>' +
+              '<div class="team-name">' + escapeHTML(t2Name) + '</div>' +
+              '<div class="team-score">' + s2 + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="event-bracket-section">' +
+        '<div class="event-bracket-section-title">Round Robin</div>' +
+        '<div class="rounds"><div class="round"><div class="round-matches">' + cards + '</div></div></div>' +
+      '</div>';
+    }
 
-      if (!filtered.length) {
-        bracketBoard.innerHTML = '<div class="empty-state" style="padding:32px;">No bracket data for this filter.</div>';
-        renderSchedule();
-        return;
-      }
+    function formatScheduleDate(match) {
+      var date = String(match.date || '').trim();
+      var time = String(match.time || '').trim();
+      if (!date && !time) return '';
+      if (!date) return time;
+      var dt = new Date(date + (time ? 'T' + time : ''));
+      if (isNaN(dt.getTime())) return (date + (time ? ' ' + time : ''));
+      var dateLabel = dt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+      var timeLabel = time ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+      return (dateLabel + (timeLabel ? ' ' + timeLabel : '')).trim();
+    }
 
-      var rounds = groupIntoRounds(filtered);
-      var numRounds = rounds.length;
-
-      // Determine champion: winner of last round last match
-      var lastRound = rounds[numRounds - 1];
-      var lastMatch = lastRound.matches[lastRound.matches.length - 1];
-      var scores = lastMatch.score !== 'TBD' ? lastMatch.score.split('-') : ['', ''];
-      var sA = parseInt(scores[0]), sB = parseInt(scores[1]);
-      var champion = (!isNaN(sA) && !isNaN(sB)) ? (sA > sB ? lastMatch.a : lastMatch.b) : null;
-
-      var html = '<div class="playoff-bracket">';
-
-      rounds.forEach(function (round, ri) {
-        var isLast = ri === numRounds - 1;
-        html += '<div class="playoff-round">';
-        html += '<div class="playoff-round-label">' + round.name + '</div>';
-        html += '<div class="playoff-round-matches">';
-        round.matches.forEach(function (m) {
-          html += '<div class="playoff-match-wrap">';
-          html += matchCard(m, state.course);
-          if (!isLast) html += '<div class="playoff-connector"><div class="playoff-connector-line"></div></div>';
-          html += '</div>';
+    function scheduleEntries(bracket) {
+      return (bracket.matches || [])
+        .filter(function (m) { return matchPassesCourse(m); })
+        .filter(function (m) {
+          return String(m.date || '').trim() || String(m.time || '').trim() || String(m.location || '').trim();
+        })
+        .map(function (m) {
+          var t1 = m.team1 ? (m.team1.name || 'TBD') : 'TBD';
+          var t2 = m.team2 ? (m.team2.name || 'TBD') : 'TBD';
+          return {
+            datetime: formatScheduleDate(m) || 'TBD',
+            match: t1 + ' vs ' + t2,
+            venue: String(m.location || 'TBD'),
+            status: String(m.status || 'Pending')
+          };
+        })
+        .sort(function (a, b) {
+          return a.datetime.localeCompare(b.datetime);
         });
-        html += '</div></div>';
-      });
-
-      // Champion slot
-      html += '<div class="playoff-round playoff-champion-round">';
-      html += '<div class="playoff-round-label">&#127942; Champion</div>';
-      html += '<div class="playoff-round-matches">';
-      html += '<div class="playoff-champion-slot">' + (champion ? champion : '?') + '</div>';
-      html += '</div></div>';
-
-      html += '</div>';
-      bracketBoard.innerHTML = html;
-      renderSchedule();
     }
 
     function parseScheduleDate(dateString) {
@@ -1872,20 +2132,14 @@ const Auth = {
       return parsed;
     }
 
-    function renderScheduleViewButtons() {
-      if (!scheduleViewToggle) return;
-      scheduleViewList.classList.toggle('active', state.scheduleView === 'list');
-      scheduleViewCalendar.classList.toggle('active', state.scheduleView === 'calendar');
-    }
-
     function renderScheduleList(schedule) {
       scheduleList.className = 'schedule-list';
       scheduleList.innerHTML = schedule.map(function (item) {
-        var live = item.status === 'Ongoing';
+        var live = String(item.status || '').toLowerCase() === 'ongoing';
         return '<div class="schedule-item">' +
-          '<div class="schedule-time">' + item.datetime + '</div>' +
-          '<div><strong>' + item.match + '</strong><div class="schedule-meta">' + item.venue + '</div></div>' +
-          '<span class="schedule-status' + (live ? ' live' : '') + '">' + item.status + '</span></div>';
+          '<div class="schedule-time">' + escapeHTML(item.datetime) + '</div>' +
+          '<div><strong>' + escapeHTML(item.match) + '</strong><div class="schedule-meta">' + escapeHTML(item.venue) + '</div></div>' +
+          '<span class="schedule-status' + (live ? ' live' : '') + '">' + escapeHTML(item.status) + '</span></div>';
       }).join('');
     }
 
@@ -1950,7 +2204,7 @@ const Auth = {
             var item = entry.item;
             var timeLabel = entry.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
             html += '<div class="calendar-event">' +
-              '<strong>' + timeLabel + '</strong><span>' + item.match + '</span>' +
+              '<strong>' + timeLabel + '</strong><span>' + escapeHTML(item.match) + '</span>' +
             '</div>';
           });
           if (dayEvents.length > 3) {
@@ -1967,61 +2221,299 @@ const Auth = {
       scheduleList.innerHTML = html;
     }
 
-    function renderSchedule() {
-      var ev = getCurrentEvent();
-      var schedule = (ev.schedule || []).filter(function (item) {
-        if (!state.course) return true;
-        return item.match.indexOf(state.course) !== -1;
-      });
-
-      renderScheduleViewButtons();
-
+    function renderSchedule(bracket) {
+      var schedule = scheduleEntries(bracket || { matches: [] });
       if (!schedule.length) {
         scheduleList.className = 'schedule-list';
         scheduleList.innerHTML = '<div class="empty-state">No schedules for this filter.</div>';
         return;
       }
 
-      if (state.scheduleView === 'calendar') {
-        renderScheduleCalendar(schedule);
+      if (state.scheduleView === 'calendar') renderScheduleCalendar(schedule);
+      else renderScheduleList(schedule);
+    }
+
+    async function fetchSports() {
+      var res = await fetch('api/sports/read.php');
+      var json = await parsePublicApiJson(res);
+      return asArraySuccess(json).filter(function (sport) {
+        return Number(sport.is_active || 1) === 1;
+      });
+    }
+
+    async function fetchEventsForSport(sportId) {
+      var res = await fetch('api/events/read.php?sports_id=' + encodeURIComponent(String(sportId)));
+      var json = await parsePublicApiJson(res);
+      var list = asArraySuccess(json);
+      return list.sort(function (a, b) {
+        var rankDiff = statusRank(a.status) - statusRank(b.status);
+        if (rankDiff !== 0) return rankDiff;
+        var aDate = new Date(a.event_start_date || a.created_at || 0).getTime();
+        var bDate = new Date(b.event_start_date || b.created_at || 0).getTime();
+        return aDate - bDate;
+      });
+    }
+
+    async function fetchRegistrationCourses() {
+      var res = await fetch('api/registrations/read.php');
+      var json = await parsePublicApiJson(res);
+      var map = {};
+      asArraySuccess(json).forEach(function (row) {
+        map[String(row.id)] = String(row.representative_course_name || row.category || '').trim();
+      });
+      return map;
+    }
+
+    async function fetchBracketForEvent(eventId) {
+      if (state.bracketByEvent[String(eventId)]) return state.bracketByEvent[String(eventId)];
+      var res = await fetch('api/brackets/read.php?event_id=' + encodeURIComponent(String(eventId)));
+      var json = await parsePublicApiJson(res);
+      var data = asObjectSuccess(json);
+      state.bracketByEvent[String(eventId)] = data || { matches: [], teams: [], tournament_type: '' };
+      return state.bracketByEvent[String(eventId)];
+    }
+
+    function collectEventCategories(events) {
+      var categories = [];
+      events.forEach(function (ev) {
+        var cat = String(ev.category || '').trim();
+        if (cat && categories.indexOf(cat) === -1) categories.push(cat);
+      });
+      return categories;
+    }
+
+    function renderCategoryButtons() {
+      if (!categorySwitch) return;
+      var events = state.eventsBySport[String(state.sportId)] || [];
+      var categories = collectEventCategories(events);
+      if (!categories.length) {
+        state.category = '';
+        categorySwitch.innerHTML = '<button type="button" data-category="" class="active">All Categories</button>';
+        return;
+      }
+
+      if (!state.category || categories.indexOf(state.category) === -1) {
+        state.category = categories[0];
+      }
+
+      categorySwitch.innerHTML = categories.map(function (cat) {
+        var active = cat === state.category ? 'active' : '';
+        return '<button type="button" data-category="' + escapeHTML(cat) + '" class="' + active + '">' + escapeHTML(cat) + '</button>';
+      }).join('');
+    }
+
+    function renderSports() {
+      sportsOptions.innerHTML = state.sports.map(function (sport) {
+        var active = Number(sport.id) === Number(state.sportId) ? 'active' : '';
+        var image = safeImagePath(sport.photo_path);
+        var bubble = image
+          ? '<span class="sport-bubble"><img src="' + escapeHTML(image) + '" alt="' + escapeHTML(sport.sport_name) + '" /></span>'
+          : '<span class="sport-bubble">&#127942;</span>';
+        return '<button type="button" class="sport-option ' + active + '" data-sport-id="' + Number(sport.id) + '">' +
+          bubble + '<span class="sport-label">' + escapeHTML(sport.sport_name) + '</span></button>';
+      }).join('');
+    }
+
+    function syncEventFilter() {
+      var events = filteredEvents();
+      eventFilter.innerHTML = events.map(function (ev) {
+        return '<option value="' + Number(ev.id) + '">' +
+          escapeHTML(ev.title || 'Untitled Event') + ' (' + escapeHTML(ev.status || 'Unknown') + ')' +
+        '</option>';
+      }).join('');
+
+      if (!events.length) {
+        state.eventId = null;
+        eventFilter.innerHTML = '<option value="">No events available</option>';
+        return;
+      }
+
+      var exists = events.some(function (ev) { return Number(ev.id) === Number(state.eventId); });
+      if (!exists) state.eventId = Number(events[0].id);
+      eventFilter.value = String(state.eventId);
+    }
+
+    function syncCourseFilter(bracket) {
+      var chosen = state.course;
+      var courses = [];
+      (bracket.matches || []).forEach(function (match) {
+        var c1 = teamCourse(match.team1);
+        var c2 = teamCourse(match.team2);
+        if (c1 && courses.indexOf(c1) === -1) courses.push(c1);
+        if (c2 && courses.indexOf(c2) === -1) courses.push(c2);
+      });
+      courses.sort(function (a, b) { return a.localeCompare(b); });
+
+      courseFilter.innerHTML = '<option value="">All Courses/Departments</option>' +
+        courses.map(function (course) {
+          return '<option value="' + escapeHTML(course) + '">' + escapeHTML(course) + '</option>';
+        }).join('');
+
+      if (chosen && courses.indexOf(chosen) !== -1) {
+        courseFilter.value = chosen;
       } else {
-        renderScheduleList(schedule);
+        state.course = '';
+        courseFilter.value = '';
       }
     }
 
-    function renderAll() { renderSports(); renderEventOptions(); renderBracket(); }
+    function renderBracket(bracket) {
+      var allMatches = (bracket.matches || []).slice();
+      if (!allMatches.length) {
+        bracketBoard.innerHTML = '<div class="empty-state" style="padding:24px;">No bracket created yet for this event.</div>';
+        renderSchedule(bracket);
+        return;
+      }
 
-    sportsOptions.addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-sport]');
-      if (!btn) return;
-      state.sportId = btn.getAttribute('data-sport');
-      state.eventId = defaultEventIdForSport(getCurrentSport());
+      var filtered = allMatches.filter(matchPassesCourse);
+      if (!filtered.length) {
+        bracketBoard.innerHTML = '<div class="empty-state" style="padding:24px;">No bracket data for this filter.</div>';
+        renderSchedule({ matches: [] });
+        return;
+      }
+
+      // Build seed map and store on state so render helpers can access it
+      state.seedMap = teamSeedMap(bracket);
+
+      var isRoundRobin = String(bracket.tournament_type || '').toLowerCase() === 'round_robin';
+      var third = filtered.filter(function (m) { return String(m.bracket_stage || '').toLowerCase() === 'third_place'; });
+
+      var html = '<div class="event-bracket-stage">';
+
+      if (isRoundRobin) {
+        html += renderRoundRobinSection(filtered);
+      } else {
+        // Upper / main bracket (stages '', 'main', 'upper') + third place appended to last column
+        var upperMain = filtered.filter(function (m) {
+          var s = String(m.bracket_stage || '').toLowerCase();
+          return s === '' || s === 'main' || s === 'upper';
+        });
+        // Lower bracket (double elimination)
+        var lower = filtered.filter(function (m) { return String(m.bracket_stage || '').toLowerCase() === 'lower'; });
+        // Grand finals (separate stage in double elim)
+        var grandFinals = filtered.filter(function (m) {
+          var s = String(m.bracket_stage || '').toLowerCase();
+          return s === 'final' || s === 'grand_final';
+        });
+
+        html += renderEliminationSection('Winners Bracket', upperMain, third);
+        if (lower.length) html += renderEliminationSection('Losers Bracket', lower, []);
+        if (grandFinals.length) html += renderEliminationSection('Grand Finals', grandFinals, []);
+      }
+
+      html += '</div>';
+      bracketBoard.innerHTML = html;
+      renderSchedule({ matches: filtered });
+    }
+
+    async function renderCurrentEventView() {
+      var event = currentEvent();
+      if (!event) {
+        bracketBoard.innerHTML = '<div class="empty-state" style="padding:24px;">No events found for this sport/category.</div>';
+        scheduleList.innerHTML = '<div class="empty-state">No schedules for this filter.</div>';
+        courseFilter.innerHTML = '<option value="">All Courses/Departments</option>';
+        return;
+      }
+
+      try {
+        var bracket = await fetchBracketForEvent(event.id);
+        syncCourseFilter(bracket);
+        renderBracket(bracket);
+      } catch (err) {
+        console.error('Events bracket load error:', err);
+        bracketBoard.innerHTML = '<div class="empty-state" style="padding:24px;">Unable to load bracket data.</div>';
+        scheduleList.innerHTML = '<div class="empty-state">Unable to load schedules.</div>';
+      }
+    }
+
+    async function loadEventsForSport(sportId) {
+      state.eventsBySport[String(sportId)] = await fetchEventsForSport(sportId);
+    }
+
+    async function onSportChanged(sportId) {
+      state.sportId = Number(sportId);
+      if (!state.eventsBySport[String(state.sportId)]) {
+        await loadEventsForSport(state.sportId);
+      }
+
+      renderSports();
+      renderCategoryButtons();
+      syncEventFilter();
       state.course = '';
-      courseFilter.value = '';
-      renderAll();
-    });
+      state.calendarYear = null;
+      state.calendarMonth = null;
+      await renderCurrentEventView();
+    }
 
-    genderSwitch.addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-gender]');
+    async function initialize() {
+      try {
+        var loadedSports = await fetchSports();
+        if (!loadedSports.length) {
+          sportsOptions.innerHTML = '<div class="empty-state">No sports available.</div>';
+          return;
+        }
+
+        state.sports = loadedSports;
+        state.registrationCourseById = await fetchRegistrationCourses();
+
+        state.sportId = Number(state.sports[0].id);
+        await loadEventsForSport(state.sportId);
+        renderSports();
+        renderCategoryButtons();
+        syncEventFilter();
+        await renderCurrentEventView();
+      } catch (err) {
+        console.error('Events page load error:', err);
+        sportsOptions.innerHTML = '<div class="empty-state">Unable to load sports.</div>';
+        bracketBoard.innerHTML = '<div class="empty-state" style="padding:24px;">Unable to load bracket data.</div>';
+        scheduleList.innerHTML = '<div class="empty-state">Unable to load schedules.</div>';
+      }
+    }
+
+    sportsOptions.addEventListener('click', async function (e) {
+      var btn = e.target.closest('[data-sport-id]');
       if (!btn) return;
-      state.gender = btn.getAttribute('data-gender');
-      genderSwitch.querySelectorAll('button').forEach(function (b) { b.classList.toggle('active', b === btn); });
-      renderBracket();
+      await onSportChanged(btn.getAttribute('data-sport-id'));
     });
 
-    eventFilter.addEventListener('change', function () { state.eventId = eventFilter.value; renderBracket(); });
-    courseFilter.addEventListener('change', function () { state.course = courseFilter.value; renderBracket(); });
+    if (categorySwitch) {
+      categorySwitch.addEventListener('click', async function (e) {
+        var btn = e.target.closest('[data-category]');
+        if (!btn) return;
+        state.category = String(btn.getAttribute('data-category') || '');
+        categorySwitch.querySelectorAll('button').forEach(function (item) {
+          item.classList.toggle('active', item === btn);
+        });
+        syncEventFilter();
+        state.course = '';
+        state.calendarYear = null;
+        state.calendarMonth = null;
+        await renderCurrentEventView();
+      });
+    }
+
+    eventFilter.addEventListener('change', async function () {
+      state.eventId = Number(eventFilter.value || 0) || null;
+      state.course = '';
+      state.calendarYear = null;
+      state.calendarMonth = null;
+      await renderCurrentEventView();
+    });
+
+    courseFilter.addEventListener('change', function () {
+      state.course = String(courseFilter.value || '');
+      renderCurrentEventView();
+    });
+
     if (scheduleViewToggle) {
       scheduleViewToggle.addEventListener('click', function (e) {
         var btn = e.target.closest('[data-view]');
         if (!btn) return;
-        state.scheduleView = btn.getAttribute('data-view');
-        if (state.scheduleView === 'calendar' && (state.calendarYear === null || state.calendarMonth === null)) {
-          var currentDate = new Date();
-          state.calendarYear = currentDate.getFullYear();
-          state.calendarMonth = currentDate.getMonth();
-        }
-        renderSchedule();
+        state.scheduleView = btn.getAttribute('data-view') || 'list';
+        scheduleViewToggle.querySelectorAll('[data-view]').forEach(function (v) {
+          v.classList.toggle('active', v === btn);
+        });
+        renderCurrentEventView();
       });
     }
 
@@ -2035,11 +2527,8 @@ const Auth = {
         state.calendarMonth = now.getMonth();
       }
 
-      if (navBtn.getAttribute('data-calendar-nav') === 'prev') {
-        state.calendarMonth -= 1;
-      } else {
-        state.calendarMonth += 1;
-      }
+      if (navBtn.getAttribute('data-calendar-nav') === 'prev') state.calendarMonth -= 1;
+      else state.calendarMonth += 1;
 
       if (state.calendarMonth < 0) {
         state.calendarMonth = 11;
@@ -2050,16 +2539,17 @@ const Auth = {
         state.calendarYear += 1;
       }
 
-      renderSchedule();
+      renderCurrentEventView();
     });
+
     if (jumpScheduleBtn) {
       jumpScheduleBtn.addEventListener('click', function () {
-        document.getElementById('schedulesSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        var section = document.getElementById('schedulesSection');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
 
-    state.eventId = defaultEventIdForSport(getCurrentSport());
-    renderAll();
+    initialize();
   };
 
   if (document.readyState === 'loading') {
