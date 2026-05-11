@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Init page-specific modules ────────────────
   initDashboard();
+  initDashboardSmsControls();
   initRegistrationManager();
   initEventManager();
   initNewsManager();
@@ -288,27 +289,36 @@ function initAdminNotifications() {
 /* =============================================
    DASHBOARD MODULE
    ============================================= */
-function initDashboard() {
+async function initDashboard() {
   if (!document.getElementById('adminDashboard')) return;
 
-  // Populate stats
-  const events = DataStore.getEvents();
-  const news   = DataStore.getNews();
-  const users  = AuthModule.getUsers();
-  const msgs   = DataStore.getMessages();
+  // Fetch all data sources in parallel from the database APIs
+  const base = '../api';
+  try {
+    const [eventsRes, usersRes, newsRes, msgsRes] = await Promise.all([
+      fetch(`${base}/events/read.php`).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+      fetch(`${base}/users/read.php`).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+      fetch(`${base}/news/read.php`).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+      fetch(`${base}/contact/read-messages.php`).then(r => r.json()).catch(() => ({ success: false, unread: 0, data: [] })),
+    ]);
 
-  setStatEl('stat-events',   events.length);
-  setStatEl('stat-users',    users.length);
-  setStatEl('stat-news',     news.length);
-  setStatEl('stat-messages', msgs.filter(m => !m.read).length);
-  setStatEl('stat-ongoing',  events.filter(e => e.status === 'Ongoing').length);
-  setStatEl('stat-upcoming', events.filter(e => e.status === 'Upcoming').length);
+    const events = eventsRes.success && Array.isArray(eventsRes.data) ? eventsRes.data : [];
+    const users  = usersRes.success  && Array.isArray(usersRes.data)  ? usersRes.data  : [];
+    const news   = newsRes.success   && Array.isArray(newsRes.data)   ? newsRes.data   : [];
+    const unread = msgsRes.success   ? (Number(msgsRes.unread) || 0) : 0;
 
-  // Recent events table
-  renderRecentEvents();
+    setStatEl('stat-events',   events.length);
+    setStatEl('stat-users',    users.length);
+    setStatEl('stat-news',     news.length);
+    setStatEl('stat-messages', unread);
+    setStatEl('stat-ongoing',  events.filter(e => String(e.status || '').toLowerCase() === 'ongoing').length);
+    setStatEl('stat-upcoming', events.filter(e => String(e.status || '').toLowerCase() === 'upcoming').length);
 
-  // Mini chart (bar chart using canvas)
-  drawEventChart();
+    renderRecentEvents(events);
+    drawEventChart(events);
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+  }
 }
 
 function setStatEl(id, value) {
@@ -316,33 +326,44 @@ function setStatEl(id, value) {
   if (el) el.textContent = value;
 }
 
-function renderRecentEvents() {
+function renderRecentEvents(events) {
   const tbody = document.getElementById('recentEventsTable');
   if (!tbody) return;
 
-  const events = DataStore.getEvents().slice(0, 5);
-  if (!events.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;">No events found.</td></tr>'; return; }
+  // Sort by start date descending, take 5 most recent
+  const sorted = (events || []).slice().sort((a, b) => {
+    return new Date(b.event_start_date || 0) - new Date(a.event_start_date || 0);
+  }).slice(0, 5);
 
-  tbody.innerHTML = events.map(ev => `
-    <tr>
-      <td>${escapeAdminHTML(ev.title)}</td>
-      <td>${escapeAdminHTML(ev.date)}</td>
-      <td>${escapeAdminHTML(ev.location)}</td>
-      <td>${escapeAdminHTML(ev.teams)}</td>
-      <td><span class="badge badge-${statusBadge(ev.status)}">${escapeAdminHTML(ev.status)}</span></td>
-    </tr>
-  `).join('');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px;">No events found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(ev => {
+    const dateStr = ev.event_start_date
+      ? new Date(ev.event_start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+      : '—';
+    const teams = Number(ev.teams_count || 0);
+    return `<tr>
+      <td>${escapeAdminHTML(ev.title || '—')}</td>
+      <td>${escapeAdminHTML(dateStr)}</td>
+      <td>${escapeAdminHTML(ev.location || '—')}</td>
+      <td>${teams}</td>
+      <td><span class="badge badge-${statusBadge(ev.status)}">${escapeAdminHTML(ev.status || '—')}</span></td>
+    </tr>`;
+  }).join('');
 }
 
-function drawEventChart() {
+function drawEventChart(events) {
   const canvas = document.getElementById('eventChart');
   if (!canvas || !canvas.getContext) return;
 
-  const ctx    = canvas.getContext('2d');
-  const events = DataStore.getEvents();
-
+  const ctx      = canvas.getContext('2d');
   const statuses = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
-  const counts   = statuses.map(s => events.filter(e => e.status === s).length);
+  const counts   = statuses.map(s =>
+    (events || []).filter(e => String(e.status || '').toLowerCase() === s.toLowerCase()).length
+  );
   const colors   = ['#ff6f00', '#2e7d32', '#1a237e', '#c62828'];
 
   const barW   = 50;
@@ -356,25 +377,33 @@ function drawEventChart() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   statuses.forEach((label, i) => {
-    const x      = startX + i * (barW + gap);
-    const barH   = (counts[i] / maxY) * H;
-    const y      = canvas.height - 30 - barH;
+    const x    = startX + i * (barW + gap);
+    const barH = (counts[i] / maxY) * H;
+    const y    = canvas.height - 30 - barH;
 
     ctx.fillStyle = colors[i];
     ctx.beginPath();
     ctx.roundRect ? ctx.roundRect(x, y, barW, barH, [6, 6, 0, 0]) : ctx.rect(x, y, barW, barH);
     ctx.fill();
 
-    // Value label
-    ctx.fillStyle   = '#333';
-    ctx.font        = 'bold 13px Segoe UI';
-    ctx.textAlign   = 'center';
+    ctx.fillStyle = '#333';
+    ctx.font      = 'bold 13px Segoe UI';
+    ctx.textAlign = 'center';
     ctx.fillText(counts[i], x + barW / 2, y - 6);
 
-    // X label
     ctx.fillStyle = '#777';
     ctx.font      = '11px Segoe UI';
     ctx.fillText(label, x + barW / 2, canvas.height - 10);
+  });
+}
+
+function initDashboardSmsControls() {
+  const modeEl = document.getElementById('smsMode');
+  const recpGrp = document.getElementById('smsRecipientsGroup');
+  if (!modeEl || !recpGrp) return;
+
+  modeEl.addEventListener('change', () => {
+    recpGrp.style.display = modeEl.value === 'all' ? 'none' : '';
   });
 }
 
