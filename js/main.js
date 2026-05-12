@@ -890,6 +890,20 @@ function initNewsPage() {
   }
 
   function pickFinalMatch(matches) {
+    const grand = matches.filter(function (m) {
+      const stage = String(m.bracket_stage || '').toLowerCase();
+      return (stage === 'final' || stage === 'grand_final') && Number(m.winner_team_id || 0) > 0;
+    });
+
+    if (grand.length) {
+      grand.sort(function (a, b) {
+        const roundDiff = Number(b.round || 0) - Number(a.round || 0);
+        if (roundDiff) return roundDiff;
+        return Number(b.id || 0) - Number(a.id || 0);
+      });
+      return grand[0];
+    }
+
     const main = matches.filter(function (m) {
       return String(m.bracket_stage || 'main').toLowerCase() !== 'third_place' && Number(m.winner_team_id || 0) > 0;
     });
@@ -919,6 +933,22 @@ function initNewsPage() {
     });
 
     return third[0];
+  }
+
+  function pickLosersFinalMatch(matches) {
+    const lower = matches.filter(function (m) {
+      return String(m.bracket_stage || '').toLowerCase() === 'lower' && Number(m.winner_team_id || 0) > 0;
+    });
+
+    if (!lower.length) return null;
+
+    lower.sort(function (a, b) {
+      const roundDiff = Number(b.round || 0) - Number(a.round || 0);
+      if (roundDiff) return roundDiff;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    return lower[0];
   }
 
   function initYearBuckets(bucket, year) {
@@ -1043,7 +1073,12 @@ function initNewsPage() {
         const goldRegId = Number(finalMatch.winner_team_id || 0);
         const silverRegId = Number(getLosingTeamId(finalMatch) || 0);
         const bronzeMatch = pickThirdPlaceMatch(matches);
-        const bronzeRegId = bronzeMatch ? Number(bronzeMatch.winner_team_id || 0) : 0;
+        let bronzeRegId = bronzeMatch ? Number(bronzeMatch.winner_team_id || 0) : 0;
+        if (!bronzeRegId) {
+          // Double-elimination fallback: bronze is usually the loser of the losers final.
+          const losersFinal = pickLosersFinalMatch(matches);
+          bronzeRegId = losersFinal ? Number(getLosingTeamId(losersFinal) || 0) : 0;
+        }
 
         if (goldRegId && departmentByRegistrationId[goldRegId]) {
           addMedal(summary, year, departmentByRegistrationId[goldRegId], 'gold');
@@ -1669,7 +1704,12 @@ function initMedalStandingsWidget(opts) {
     var withWinner = matches.filter(function (m) { return !!m.winner_team_id; });
     if (!withWinner.length) return { gold: '-', silver: '-', bronze: '-' };
 
-    var mainWithWinner = withWinner.filter(function (m) {
+    var grandWithWinner = withWinner.filter(function (m) {
+      var stage = String(m.bracket_stage || '').toLowerCase();
+      return stage === 'final' || stage === 'grand_final';
+    });
+
+    var mainWithWinner = grandWithWinner.length ? grandWithWinner : withWinner.filter(function (m) {
       var stage = String(m.bracket_stage || '').toLowerCase();
       return !stage || stage === 'main' || stage === 'upper';
     });
@@ -1695,6 +1735,23 @@ function initMedalStandingsWidget(opts) {
     var bronze = '-';
     if (bronzeMatch && bronzeMatch.winner_team_id) {
       bronze = teamMap[Number(bronzeMatch.winner_team_id)] || '-';
+    } else {
+      var lowerWithWinner = withWinner.filter(function (m) {
+        return String(m.bracket_stage || '').toLowerCase() === 'lower';
+      });
+      if (lowerWithWinner.length) {
+        lowerWithWinner.sort(function (a, b) {
+          var rd = Number(b.round || 0) - Number(a.round || 0);
+          if (rd) return rd;
+          return Number(b.id || 0) - Number(a.id || 0);
+        });
+        var losersFinal = lowerWithWinner[0];
+        var lfWinner = Number(losersFinal.winner_team_id || 0);
+        var lfT1 = losersFinal.team1 && Number(losersFinal.team1.id || 0);
+        var lfT2 = losersFinal.team2 && Number(losersFinal.team2.id || 0);
+        var bronzeId = lfWinner === lfT1 ? lfT2 : (lfWinner === lfT2 ? lfT1 : 0);
+        if (bronzeId) bronze = teamMap[bronzeId] || '-';
+      }
     }
     return { gold: gold, silver: silver, bronze: bronze };
   }
@@ -1982,7 +2039,12 @@ initMedalStandingsWidget({
 
       var roundsHtml = rounds.map(function (r, roundIndex) {
         var roundMatches = roundsMap[r] || [];
-        var hasConnectors = roundIndex < rounds.length - 1;
+        var hasNextRound = roundIndex < rounds.length - 1;
+        var nextRoundKey = hasNextRound ? rounds[roundIndex + 1] : null;
+        var nextRoundMatches = nextRoundKey !== null ? (roundsMap[nextRoundKey] || []) : [];
+        // Same-count rounds should use simple forward lines; collapsing rounds use paired connectors.
+        var useStraightConnectors = hasNextRound && roundMatches.length === nextRoundMatches.length;
+        var usePairedConnectors = hasNextRound && !useStraightConnectors;
         var step = UNIT * Math.pow(2, roundIndex);
         var offset = Math.max(0, (step / 2) - (CARD_HEIGHT / 2));
         var prevBottom = 0;
@@ -2012,7 +2074,7 @@ initMedalStandingsWidget({
                 '<div class="team-score">' + s2 + '</div>' +
               '</div>' +
             '</div>' +
-            (hasConnectors && matchIndex % 2 === 0 ? '<span class="connector-out"></span>' : '') +
+            (usePairedConnectors && roundMatches.length > 1 && matchIndex % 2 === 0 ? '<span class="connector-out"></span>' : '') +
           '</div>';
         }).join('');
 
@@ -2050,7 +2112,10 @@ initMedalStandingsWidget({
           ? roundMatches[0].label
           : roundLabel(roundMatches.length, r);
 
-        return '<div class="round' + (hasConnectors ? ' has-connectors' : '') + '">' +
+        return '<div class="round' +
+          (usePairedConnectors ? ' has-connectors' : '') +
+          (useStraightConnectors ? ' has-lines' : '') +
+        '">' +
           '<h3 class="round-title">' + escapeHTML(label) + '</h3>' +
           '<div class="round-matches">' + matchHtml + thirdHtml + '</div>' +
         '</div>';
@@ -2064,33 +2129,177 @@ initMedalStandingsWidget({
 
     function renderRoundRobinSection(matches) {
       if (!matches.length) return '';
-      var cards = matches.map(function (match) {
-        var win = winnerSide(match);
-        var t1Name = match.team1 ? (match.team1.name || 'Team') : 'TBD';
-        var t2Name = match.team2 ? (match.team2.name || 'Team') : 'TBD';
-        var s1 = Number(match.score1 || 0);
-        var s2 = Number(match.score2 || 0);
-        var seed1 = match.team1 ? (state.seedMap[String(match.team1.id)] || '-') : '-';
-        var seed2 = match.team2 ? (state.seedMap[String(match.team2.id)] || '-') : '-';
-        return '<div class="match-wrap" style="padding-right:0;">' +
-          '<div class="match-card">' +
-            '<div class="team-row' + (win === 1 ? ' winner' : '') + '">' +
-              '<div class="seed-col">' + escapeHTML(String(seed1)) + '</div>' +
-              '<div class="team-name">' + escapeHTML(t1Name) + '</div>' +
-              '<div class="team-score">' + s1 + '</div>' +
+      var roundsMap = {};
+      matches.forEach(function (m) {
+        var key = Number(m.round || 1);
+        if (!roundsMap[key]) roundsMap[key] = [];
+        roundsMap[key].push(m);
+      });
+
+      var rounds = Object.keys(roundsMap).map(Number).sort(function (a, b) { return a - b; });
+      if (!rounds.length) return '<div class="empty-state" style="padding:24px;">No round robin matches generated yet.</div>';
+
+      var roundsHtml = rounds.map(function (r) {
+        var roundMatches = roundsMap[r] || [];
+        var cards = roundMatches.map(function (match) {
+          var win = winnerSide(match);
+          var t1Name = match.team1 ? (match.team1.name || 'Team') : 'TBD';
+          var t2Name = match.team2 ? (match.team2.name || 'Team') : 'TBD';
+          var s1 = Number(match.score1 || 0);
+          var s2 = Number(match.score2 || 0);
+          var seed1 = match.team1 ? (state.seedMap[String(match.team1.id)] || '-') : '-';
+          var seed2 = match.team2 ? (state.seedMap[String(match.team2.id)] || '-') : '-';
+          return '<div class="match-wrap" style="padding-right:0;">' +
+            '<div class="match-card">' +
+              '<div class="team-row' + (win === 1 ? ' winner' : '') + '">' +
+                '<div class="seed-col">' + escapeHTML(String(seed1)) + '</div>' +
+                '<div class="team-name">' + escapeHTML(t1Name) + '</div>' +
+                '<div class="team-score">' + s1 + '</div>' +
+              '</div>' +
+              '<div class="team-row' + (win === 2 ? ' winner' : '') + '">' +
+                '<div class="seed-col">' + escapeHTML(String(seed2)) + '</div>' +
+                '<div class="team-name">' + escapeHTML(t2Name) + '</div>' +
+                '<div class="team-score">' + s2 + '</div>' +
+              '</div>' +
             '</div>' +
-            '<div class="team-row' + (win === 2 ? ' winner' : '') + '">' +
-              '<div class="seed-col">' + escapeHTML(String(seed2)) + '</div>' +
-              '<div class="team-name">' + escapeHTML(t2Name) + '</div>' +
-              '<div class="team-score">' + s2 + '</div>' +
-            '</div>' +
-          '</div>' +
+          '</div>';
+        }).join('');
+
+        return '<div class="round">' +
+          '<h3 class="round-title">' + escapeHTML(roundMatches[0]?.label || ('Round ' + r)) + '</h3>' +
+          '<div class="round-matches">' + cards + '</div>' +
         '</div>';
       }).join('');
+
       return '<div class="event-bracket-section">' +
         '<div class="event-bracket-section-title">Round Robin</div>' +
-        '<div class="rounds"><div class="round"><div class="round-matches">' + cards + '</div></div></div>' +
+        '<div class="rounds">' + roundsHtml + '</div>' +
       '</div>';
+    }
+
+    function renderDoubleEliminationSection(matches) {
+      if (!matches.length) return '';
+
+      var CARD_HEIGHT = 86;
+      var BASE_GAP = 14;
+      var UNIT = CARD_HEIGHT + BASE_GAP;
+
+      function groupByRound(list) {
+        var map = {};
+        list.forEach(function (match) {
+          var key = Number(match.round || 1);
+          if (!map[key]) map[key] = [];
+          map[key].push(match);
+        });
+        return map;
+      }
+
+      function buildMatchCardHtml(match) {
+        var win = winnerSide(match);
+        return '<div class="match-card" data-match-id="' + match.id + '">' +
+          '<div class="team-row' + (win === 1 ? ' winner' : '') + '">' +
+            '<div class="seed-col">' + escapeHTML(String(match.team1 ? (state.seedMap[String(match.team1.id)] || '-') : '-')) + '</div>' +
+            '<div class="team-name">' + escapeHTML(match.team1 ? (match.team1.name || 'Team') : 'TBD') + '</div>' +
+            '<div class="team-score">' + Number(match.score1 || 0) + '</div>' +
+          '</div>' +
+          '<div class="team-row' + (win === 2 ? ' winner' : '') + '">' +
+            '<div class="seed-col">' + escapeHTML(String(match.team2 ? (state.seedMap[String(match.team2.id)] || '-') : '-')) + '</div>' +
+            '<div class="team-name">' + escapeHTML(match.team2 ? (match.team2.name || 'Team') : 'TBD') + '</div>' +
+            '<div class="team-score">' + Number(match.score2 || 0) + '</div>' +
+          '</div>' +
+        '</div>';
+      }
+
+      function buildRoundsHtml(roundsMap, opts) {
+        var rounds = Object.keys(roundsMap).map(Number).sort(function (a, b) { return a - b; });
+        if (!rounds.length) return '';
+
+        var maxMatchCount = opts && opts.maxMatchCount ? opts.maxMatchCount : roundsMap[rounds[0]].length;
+        var appendedColumn = !!(opts && opts.appendedColumn);
+
+        return rounds.map(function (r, roundIndex) {
+          var roundMatches = roundsMap[r] || [];
+          var nextKey = rounds[roundIndex + 1];
+          var nextMatches = nextKey != null ? roundsMap[nextKey] : null;
+          var isLast = roundIndex === rounds.length - 1;
+          var isHalving = nextMatches && nextMatches.length < roundMatches.length;
+          var hasForwardLine = !isHalving && (!isLast || appendedColumn);
+
+          var step = UNIT * (maxMatchCount / Math.max(1, roundMatches.length));
+          var offset = (step - CARD_HEIGHT) / 2;
+          var prevBottom = 0;
+
+          var matchHtml = roundMatches.map(function (match, matchIndex) {
+            var y = offset + (matchIndex * step);
+            var marginTop = Math.max(0, Math.round(y - prevBottom));
+            prevBottom = y + CARD_HEIGHT;
+
+            return '<div class="match-wrap" style="margin-top:' + marginTop + 'px;--pair-step:' + step + 'px;">' +
+              buildMatchCardHtml(match) +
+              (isHalving && (matchIndex % 2 === 0) ? '<span class="connector-out"></span>' : '') +
+            '</div>';
+          }).join('');
+
+          var label = roundMatches[0]?.label || ('Round ' + r);
+          var cssClass = 'round' + (isHalving ? ' has-connectors' : (hasForwardLine ? ' has-lines' : ''));
+          return '<div class="' + cssClass + '">' +
+            '<h3 class="round-title">' + escapeHTML(label) + '</h3>' +
+            '<div class="round-matches">' + matchHtml + '</div>' +
+          '</div>';
+        }).join('');
+      }
+
+      function buildFinalsColumn(finalMatches, topOffset) {
+        if (!finalMatches.length) return '';
+        var sorted = finalMatches.slice().sort(function (a, b) { return Number(a.id) - Number(b.id); });
+        var first = true;
+        var cardsHtml = sorted.map(function (match) {
+          var mt = first ? topOffset : BASE_GAP;
+          first = false;
+          return '<div class="match-wrap" style="margin-top:' + mt + 'px;padding-right:0;">' +
+            buildMatchCardHtml(match) +
+          '</div>';
+        }).join('');
+
+        return '<div class="round">' +
+          '<h3 class="round-title">Grand Finals</h3>' +
+          '<div class="round-matches">' + cardsHtml + '</div>' +
+        '</div>';
+      }
+
+      var allMatches = matches.slice();
+      var upperMatches = allMatches.filter(function (m) { return String(m.bracket_stage || '').toLowerCase() === 'upper'; });
+      var lowerMatches = allMatches.filter(function (m) { return String(m.bracket_stage || '').toLowerCase() === 'lower'; });
+      var finalMatches = allMatches.filter(function (m) {
+        var stage = String(m.bracket_stage || '').toLowerCase();
+        return stage === 'final' && String(m.label || '').toLowerCase() !== 'if necessary';
+      });
+
+      var upperRoundsMap = groupByRound(upperMatches);
+      var upperRoundNos = Object.keys(upperRoundsMap).map(Number).sort(function (a, b) { return a - b; });
+      var maxUpperCount = upperRoundNos.length ? upperRoundsMap[upperRoundNos[0]].length : 1;
+      var wFinalCount = upperRoundNos.length ? upperRoundsMap[upperRoundNos[upperRoundNos.length - 1]].length : 1;
+      var wFinalStep = UNIT * (maxUpperCount / Math.max(1, wFinalCount));
+      var wFinalOffset = Math.round((wFinalStep - CARD_HEIGHT) / 2);
+
+      var lowerRoundsMap = groupByRound(lowerMatches);
+      var lowerRoundNos = Object.keys(lowerRoundsMap).map(Number).sort(function (a, b) { return a - b; });
+      var maxLowerCount = lowerRoundNos.length ? lowerRoundsMap[lowerRoundNos[0]].length : 1;
+
+      var winnerHtml = buildRoundsHtml(upperRoundsMap, { maxMatchCount: maxUpperCount, appendedColumn: finalMatches.length > 0 });
+      var finalsHtml = buildFinalsColumn(finalMatches, wFinalOffset);
+      var loserHtml = buildRoundsHtml(lowerRoundsMap, { maxMatchCount: maxLowerCount });
+
+      return '<div class="de-section">' +
+        '<div class="de-section-title">Winners Bracket</div>' +
+        '<div class="rounds">' + winnerHtml + finalsHtml + '</div>' +
+      '</div>' +
+      (loserHtml
+        ? '<div class="de-section">' +
+            '<div class="de-section-title">Losers Bracket</div>' +
+            '<div class="rounds">' + loserHtml + '</div>' +
+          '</div>'
+        : '');
     }
 
     function formatScheduleDate(match) {
@@ -2378,27 +2587,24 @@ initMedalStandingsWidget({
       var isRoundRobin = String(bracket.tournament_type || '').toLowerCase() === 'round_robin';
       var third = filtered.filter(function (m) { return String(m.bracket_stage || '').toLowerCase() === 'third_place'; });
 
-      var html = '<div class="event-bracket-stage">';
+      var tournamentType = String(bracket.tournament_type || '').toLowerCase();
+      var isDoubleElimination = tournamentType === 'double_elimination';
+      var html = '<div class="event-bracket-stage' + (isDoubleElimination ? ' double-elim-view' : '') + '">';
 
       if (isRoundRobin) {
         html += renderRoundRobinSection(filtered);
+      } else if (isDoubleElimination) {
+        html += renderDoubleEliminationSection(filtered);
       } else {
-        // Upper / main bracket (stages '', 'main', 'upper') + third place appended to last column
+        // Single elimination retains the original public bracket layout.
         var upperMain = filtered.filter(function (m) {
           var s = String(m.bracket_stage || '').toLowerCase();
           return s === '' || s === 'main' || s === 'upper';
         });
-        // Lower bracket (double elimination)
-        var lower = filtered.filter(function (m) { return String(m.bracket_stage || '').toLowerCase() === 'lower'; });
-        // Grand finals (separate stage in double elim)
-        var grandFinals = filtered.filter(function (m) {
-          var s = String(m.bracket_stage || '').toLowerCase();
-          return s === 'final' || s === 'grand_final';
+        var third = filtered.filter(function (m) {
+          return String(m.bracket_stage || '').toLowerCase() === 'third_place';
         });
-
-        html += renderEliminationSection('Winners Bracket', upperMain, third);
-        if (lower.length) html += renderEliminationSection('Losers Bracket', lower, []);
-        if (grandFinals.length) html += renderEliminationSection('Grand Finals', grandFinals, []);
+        html += renderEliminationSection('Bracket', upperMain, third);
       }
 
       html += '</div>';

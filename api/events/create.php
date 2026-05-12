@@ -25,6 +25,12 @@ if (!is_array($input)) {
     die(json_encode(['success' => false, 'message' => 'Invalid JSON input.']));
 }
 
+$hasAutoSmsReminderEnabled = events_column_exists($conn, 'events', 'auto_sms_reminder_enabled');
+$hasAutoSmsWinnerEnabled = events_column_exists($conn, 'events', 'auto_sms_winner_enabled');
+$hasSmsReminderTemplateId = events_column_exists($conn, 'events', 'sms_reminder_template_id');
+$hasSmsWinnerTemplateId = events_column_exists($conn, 'events', 'sms_winner_template_id');
+$hasAutoSmsColumns = $hasAutoSmsReminderEnabled && $hasAutoSmsWinnerEnabled && $hasSmsReminderTemplateId && $hasSmsWinnerTemplateId;
+
 // ── Required fields ────────────────────────────────────────────────────────
 $title = trim((string)($input['title'] ?? ''));
 if ($title === '') events_error(400, 'Event title is required.');
@@ -61,6 +67,22 @@ $hasThirdPlaceMatch = !empty($input['has_third_place_match']) ? 1 : 0;
 $allowedStatuses = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'];
 $status      = in_array($input['status'] ?? '', $allowedStatuses, true) ? $input['status'] : 'Upcoming';
 $registrationOpen = isset($input['registration_open']) ? (intval($input['registration_open']) ? 1 : 0) : 1;
+$autoSmsReminderEnabled = !empty($input['auto_sms_reminder_enabled']) ? 1 : 0;
+$autoSmsWinnerEnabled = !empty($input['auto_sms_winner_enabled']) ? 1 : 0;
+$smsReminderTemplateId = isset($input['sms_reminder_template_id']) && intval($input['sms_reminder_template_id']) > 0
+    ? intval($input['sms_reminder_template_id'])
+    : null;
+$smsWinnerTemplateId = isset($input['sms_winner_template_id']) && intval($input['sms_winner_template_id']) > 0
+    ? intval($input['sms_winner_template_id'])
+    : null;
+
+if ($hasAutoSmsColumns && $autoSmsReminderEnabled && $smsReminderTemplateId === null) {
+    events_error(400, 'Reminder template is required when auto reminder is enabled.');
+}
+if ($hasAutoSmsColumns && $autoSmsWinnerEnabled && $smsWinnerTemplateId === null) {
+    events_error(400, 'Winner template is required when auto winner SMS is enabled.');
+}
+
 $createdBy   = isset($input['created_by']) ? intval($input['created_by']) : null;
 if ($createdBy !== null && $createdBy <= 0) $createdBy = null;
 
@@ -71,27 +93,75 @@ $chk->execute();
 if ($chk->get_result()->num_rows === 0) events_error(404, 'Sport not found.');
 $chk->close();
 
+if ($hasAutoSmsColumns && $smsReminderTemplateId !== null) {
+    $tplChk = $conn->prepare('SELECT id FROM announcement_templates WHERE id = ? LIMIT 1');
+    $tplChk->bind_param('i', $smsReminderTemplateId);
+    $tplChk->execute();
+    if ($tplChk->get_result()->num_rows === 0) {
+        $tplChk->close();
+        events_error(404, 'Reminder template not found.');
+    }
+    $tplChk->close();
+}
+
+if ($hasAutoSmsColumns && $smsWinnerTemplateId !== null) {
+    $tplChk = $conn->prepare('SELECT id FROM announcement_templates WHERE id = ? LIMIT 1');
+    $tplChk->bind_param('i', $smsWinnerTemplateId);
+    $tplChk->execute();
+    if ($tplChk->get_result()->num_rows === 0) {
+        $tplChk->close();
+        events_error(404, 'Winner template not found.');
+    }
+    $tplChk->close();
+}
+
 // ── Generate public_id ─────────────────────────────────────────────────────
 $publicId = 'ev' . time() . substr((string)mt_rand(100, 999), 0, 3);
 
 // ── Insert ─────────────────────────────────────────────────────────────────
-$stmt = $conn->prepare(
-    "INSERT INTO events
-       (public_id, title, sports_id, category, event_start_date, event_end_date,
-        location, teams_count, tournament_type, round_robin_format,
-        has_third_place_match, description, status, registration_open, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-);
-if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
-
 $teamsCount = 0; // Auto-calculated from registrations; always start at 0
-$stmt->bind_param(
-    'ssissssississii',
-    $publicId, $title, $sportsId, $category,
-    $startDate, $endDate, $location,
-    $teamsCount, $tournamentType, $roundRobinFormat,
-    $hasThirdPlaceMatch, $description, $status, $registrationOpen, $createdBy
-);
+
+if ($hasAutoSmsColumns) {
+    $stmt = $conn->prepare(
+        "INSERT INTO events
+           (public_id, title, sports_id, category, event_start_date, event_end_date,
+            location, teams_count, tournament_type, round_robin_format,
+            has_third_place_match, auto_sms_reminder_enabled, auto_sms_winner_enabled,
+            sms_reminder_template_id, sms_winner_template_id,
+            description, status, registration_open, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
+
+    $stmt->bind_param(
+        'ssissssissiiiiissii',
+        $publicId, $title, $sportsId, $category,
+        $startDate, $endDate, $location,
+        $teamsCount, $tournamentType, $roundRobinFormat,
+        $hasThirdPlaceMatch, $autoSmsReminderEnabled, $autoSmsWinnerEnabled,
+        $smsReminderTemplateId, $smsWinnerTemplateId,
+        $description, $status, $registrationOpen, $createdBy
+    );
+} else {
+    $stmt = $conn->prepare(
+        "INSERT INTO events
+           (public_id, title, sports_id, category, event_start_date, event_end_date,
+            location, teams_count, tournament_type, round_robin_format,
+            has_third_place_match,
+            description, status, registration_open, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    if (!$stmt) events_error(500, 'Database error: ' . $conn->error);
+
+    $stmt->bind_param(
+        'ssissssississii',
+        $publicId, $title, $sportsId, $category,
+        $startDate, $endDate, $location,
+        $teamsCount, $tournamentType, $roundRobinFormat,
+        $hasThirdPlaceMatch,
+        $description, $status, $registrationOpen, $createdBy
+    );
+}
 
 if (!$stmt->execute()) {
     $err = $stmt->error;
@@ -103,15 +173,44 @@ $newId = (int)$conn->insert_id;
 $stmt->close();
 $conn->close();
 
+$smsConfigPersisted = $hasAutoSmsColumns;
+$responseMessage = $smsConfigPersisted
+    ? 'Event created successfully.'
+    : 'Event created, but Auto SMS settings were not saved because required database columns are missing.';
+
 http_response_code(201);
 echo json_encode([
     'success'   => true,
-    'message'   => 'Event created successfully.',
+    'message'   => $responseMessage,
     'id'        => $newId,
-    'public_id' => $publicId
+    'public_id' => $publicId,
+    'auto_sms_config_persisted' => $smsConfigPersisted
 ]);
 
 function events_error(int $code, string $msg): void {
     http_response_code($code);
     die(json_encode(['success' => false, 'message' => $msg]));
+}
+
+function events_column_exists(mysqli $conn, string $table, string $column): bool {
+        $stmt = $conn->prepare(
+                'SELECT 1
+                     FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                        AND TABLE_NAME = ?
+                        AND COLUMN_NAME = ?
+                    LIMIT 1'
+        );
+    if (!$stmt) return false;
+
+        $stmt->bind_param('ss', $table, $column);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $exists = $res && $res->num_rows > 0;
+    if ($res instanceof mysqli_result) {
+        $res->free();
+    }
+    $stmt->close();
+
+    return $exists;
 }

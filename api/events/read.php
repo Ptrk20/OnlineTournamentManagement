@@ -16,12 +16,38 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     die(json_encode(['success' => false, 'message' => 'Method not allowed. Use GET.']));
 }
 
+$hasAutoSmsReminderEnabled = events_column_exists($conn, 'events', 'auto_sms_reminder_enabled');
+$hasAutoSmsWinnerEnabled = events_column_exists($conn, 'events', 'auto_sms_winner_enabled');
+$hasSmsReminderTemplateId = events_column_exists($conn, 'events', 'sms_reminder_template_id');
+$hasSmsWinnerTemplateId = events_column_exists($conn, 'events', 'sms_winner_template_id');
+
+$autoSmsReminderExpr = $hasAutoSmsReminderEnabled
+    ? 'e.auto_sms_reminder_enabled AS auto_sms_reminder_enabled'
+    : '0 AS auto_sms_reminder_enabled';
+$autoSmsWinnerExpr = $hasAutoSmsWinnerEnabled
+    ? 'e.auto_sms_winner_enabled AS auto_sms_winner_enabled'
+    : '0 AS auto_sms_winner_enabled';
+$smsReminderTemplateExpr = $hasSmsReminderTemplateId
+    ? 'e.sms_reminder_template_id AS sms_reminder_template_id'
+    : 'NULL AS sms_reminder_template_id';
+$smsWinnerTemplateExpr = $hasSmsWinnerTemplateId
+    ? 'e.sms_winner_template_id AS sms_winner_template_id'
+    : 'NULL AS sms_winner_template_id';
+
 $cols = "e.id, e.public_id, e.title, e.sports_id, s.sport_name,
          e.category, e.event_start_date, e.event_end_date,
          e.location, e.tournament_type, e.round_robin_format,
-         e.has_third_place_match, e.description, e.status, e.registration_open,
+         e.has_third_place_match,
+         {$autoSmsReminderExpr}, {$autoSmsWinnerExpr},
+         {$smsReminderTemplateExpr}, {$smsWinnerTemplateExpr},
+         e.description, e.status, e.registration_open,
          e.created_at, e.updated_at,
-         COALESCE(COUNT(DISTINCT CASE WHEN tr.status='Approved' THEN tr.id END), 0) AS teams_count";
+         COALESCE((
+           SELECT COUNT(*)
+             FROM team_registrations tr
+            WHERE tr.event_id = e.id
+              AND tr.status = 'Approved'
+         ), 0) AS teams_count";
 
 if (isset($_GET['id'])) {
     $id = intval($_GET['id']);
@@ -34,9 +60,7 @@ if (isset($_GET['id'])) {
         "SELECT $cols
            FROM events e
       LEFT JOIN sports s ON s.id = e.sports_id
-      LEFT JOIN team_registrations tr ON tr.event_id = e.id
           WHERE e.id = ?
-       GROUP BY e.id
           LIMIT 1"
     );
     if (!$stmt) {
@@ -76,11 +100,11 @@ if (!empty($_GET['sports_id'])) {
     $types   .= 'i';
 }
 
-$sql = "SELECT $cols FROM events e LEFT JOIN sports s ON s.id = e.sports_id LEFT JOIN team_registrations tr ON tr.event_id = e.id";
+$sql = "SELECT $cols FROM events e LEFT JOIN sports s ON s.id = e.sports_id";
 if ($where) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
 }
-$sql .= ' GROUP BY e.id ORDER BY e.event_start_date DESC';
+$sql .= ' ORDER BY e.event_start_date DESC';
 
 $stmt = $conn->prepare($sql);
 if (!$stmt) {
@@ -100,3 +124,26 @@ echo json_encode(['success' => true, 'data' => $rows, 'total' => count($rows)]);
 
 $stmt->close();
 $conn->close();
+
+function events_column_exists(mysqli $conn, string $table, string $column): bool {
+        $stmt = $conn->prepare(
+                'SELECT 1
+                     FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                        AND TABLE_NAME = ?
+                        AND COLUMN_NAME = ?
+                    LIMIT 1'
+        );
+    if (!$stmt) return false;
+
+        $stmt->bind_param('ss', $table, $column);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $exists = $res && $res->num_rows > 0;
+    if ($res instanceof mysqli_result) {
+        $res->free();
+    }
+    $stmt->close();
+
+    return $exists;
+}

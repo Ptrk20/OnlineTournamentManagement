@@ -743,7 +743,8 @@
     clearDownstreamFromMatch(match);
 
     saveBracket();
-    await apiUpdateMatch({
+    // Fire API in background — don't block UI on server response
+    apiUpdateMatch({
       id:                     dbIdForMatch(match),
       team1_registration_id:  team1 ? Number(team1.id) : null,
       team2_registration_id:  team2 ? Number(team2.id) : null,
@@ -752,8 +753,10 @@
       team2_score:            0,
       match_status:           'Pending'
     });
+    closeMatchModal();
     renderBoard();
-    openMatchModal(match.id);
+    if (typeof showToast === 'function') showToast('Teams saved.');
+    else if (typeof adminToast === 'function') adminToast('Teams saved.');
   }
 
   function closeMatchModal() {
@@ -769,17 +772,17 @@
     match.location    = document.getElementById('matchLocation').value    || '';
     match.description = document.getElementById('matchDescription').value || '';
     saveBracket();
-    await apiUpdateMatch({
+    // Fire API in background — don't block UI on server response
+    apiUpdateMatch({
       id:                dbIdForMatch(match),
       schedule_date:     match.date        || null,
       schedule_time:     match.time        || null,
       location:          match.location    || null,
       match_description: match.description || null
     });
-    if (typeof adminToast === 'function') adminToast('Match info saved.');
-    else alert('Match info saved.');
-    openMatchModal(match.id);
-    setActiveTab('scores');
+    closeMatchModal();
+    if (typeof showToast === 'function') showToast('Match info saved.');
+    else if (typeof adminToast === 'function') adminToast('Match info saved.');
   }
 
   async function clearMatchInfo() {
@@ -833,16 +836,18 @@
     const loser = (winner === match.team1) ? match.team2 : match.team1;
     if (loser && match.loser_next_match_id) assignLoserToNext(match, loser);
     saveBracket();
-    await apiUpdateMatch({
+    // Fire API in background — SMS sending happens server-side and must not block the UI
+    apiUpdateMatch({
       id:                     dbIdForMatch(match),
       team1_score:            score1,
       team2_score:            score2,
       winner_registration_id: Number(winner.id),
       match_status:           'Completed'
     });
+    closeMatchModal();
     renderBoard();
-    openMatchModal(match.id);
-    setActiveTab('scores');
+    if (typeof showToast === 'function') showToast('Match result submitted.');
+    else if (typeof adminToast === 'function') adminToast('Match result submitted.');
   }
 
   async function resetScores() {
@@ -854,15 +859,18 @@
     match.status          = 'Pending';
     clearDownstreamFromMatch(match);
     saveBracket();
-    await apiUpdateMatch({
+    // Fire API in background — don't block UI on server response
+    apiUpdateMatch({
       id:                     dbIdForMatch(match),
       team1_score:            0,
       team2_score:            0,
       winner_registration_id: null,
       match_status:           'Pending'
     });
+    closeMatchModal();
     renderBoard();
-    openMatchModal(match.id);
+    if (typeof showToast === 'function') showToast('Scores reset.', 'info');
+    else if (typeof adminToast === 'function') adminToast('Scores reset.', 'info');
   }
 
   function setActiveTab(name) {

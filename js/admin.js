@@ -429,6 +429,7 @@ let eventSchedulesState = {
   calendarMonth: null,
   selectedMatchId: null
 };
+let announcementTemplateCache = [];
 
 async function loadSportsDropdown() {
   const sel = document.getElementById('eventSportsId');
@@ -453,6 +454,61 @@ async function loadSportsDropdown() {
   }
 }
 
+async function loadAnnouncementTemplateOptions(selectedReminderId = '', selectedWinnerId = '') {
+  const reminderSel = document.getElementById('eventReminderTemplateId');
+  const winnerSel = document.getElementById('eventWinnerTemplateId');
+  if (!reminderSel || !winnerSel) return;
+
+  try {
+    const res = await fetch('../api/announcements/templates_read.php');
+    const json = await res.json();
+    announcementTemplateCache = (json.success && Array.isArray(json.data)) ? json.data : [];
+  } catch (err) {
+    console.error('loadAnnouncementTemplateOptions error:', err);
+    announcementTemplateCache = [];
+  }
+
+  const options = ['<option value="">Select template</option>']
+    .concat(announcementTemplateCache.map(function (tpl) {
+      const name = tpl.template_name || ('Template #' + Number(tpl.id));
+      return '<option value="' + Number(tpl.id) + '">' + escapeAdminHTML(name) + '</option>';
+    }))
+    .join('');
+
+  reminderSel.innerHTML = options;
+  winnerSel.innerHTML = options;
+
+  if (selectedReminderId) reminderSel.value = String(selectedReminderId);
+  if (selectedWinnerId) winnerSel.value = String(selectedWinnerId);
+}
+
+function syncEventAutoSmsControls() {
+  const reminderOn = document.getElementById('eventAutoReminder');
+  const winnerOn = document.getElementById('eventAutoWinner');
+  const reminderSel = document.getElementById('eventReminderTemplateId');
+  const winnerSel = document.getElementById('eventWinnerTemplateId');
+  if (!reminderOn || !winnerOn || !reminderSel || !winnerSel) return;
+
+  reminderSel.disabled = !reminderOn.checked;
+  winnerSel.disabled = !winnerOn.checked;
+
+  if (!reminderOn.checked) reminderSel.value = '';
+  if (!winnerOn.checked) winnerSel.value = '';
+}
+
+function bindEventAutoSmsControlListeners() {
+  const reminderOn = document.getElementById('eventAutoReminder');
+  const winnerOn = document.getElementById('eventAutoWinner');
+  if (reminderOn && !reminderOn.dataset.boundAutoSms) {
+    reminderOn.addEventListener('change', syncEventAutoSmsControls);
+    reminderOn.dataset.boundAutoSms = '1';
+  }
+  if (winnerOn && !winnerOn.dataset.boundAutoSms) {
+    winnerOn.addEventListener('change', syncEventAutoSmsControls);
+    winnerOn.dataset.boundAutoSms = '1';
+  }
+}
+
 function initEventManager() {
   const page = document.getElementById('adminEvents');
   if (!page) return;
@@ -463,9 +519,16 @@ function initEventManager() {
   const addBtn = document.getElementById('addEventBtn');
   if (addBtn) addBtn.addEventListener('click', async () => {
     clearEventForm();
-    await loadSportsDropdown();
+    await Promise.all([
+      loadSportsDropdown(),
+      loadAnnouncementTemplateOptions('', '')
+    ]);
+    syncEventAutoSmsControls();
     openModal('eventModal');
   });
+
+  bindEventAutoSmsControlListeners();
+  syncEventAutoSmsControls();
 
   // Save event
   const saveBtn = document.getElementById('saveEventBtn');
@@ -630,6 +693,12 @@ async function saveEvent() {
   const tournamentType = document.getElementById('eventTournamentType')?.value || 'single_elimination';
   const hasThirdPlaceMatch = (document.querySelector('input[name="eventThirdPlace"]:checked')?.value || 'yes') === 'yes';
   const registrationOpen = Number(document.querySelector('input[name="eventRegistrationOpen"]:checked')?.value ?? 1) === 1;
+  const autoReminderEnabled = !!document.getElementById('eventAutoReminder')?.checked;
+  const autoWinnerEnabled = !!document.getElementById('eventAutoWinner')?.checked;
+  const reminderTemplateIdRaw = document.getElementById('eventReminderTemplateId')?.value || '';
+  const winnerTemplateIdRaw = document.getElementById('eventWinnerTemplateId')?.value || '';
+  const reminderTemplateId = reminderTemplateIdRaw ? Number(reminderTemplateIdRaw) : null;
+  const winnerTemplateId = winnerTemplateIdRaw ? Number(winnerTemplateIdRaw) : null;
 
   if (!title || !sportsId || !category || !startDate || !endDate || !location) {
     adminToast('Please fill in all required fields.', 'error');
@@ -638,6 +707,16 @@ async function saveEvent() {
 
   if (new Date(endDate) < new Date(startDate)) {
     adminToast('End date must not be before start date.', 'error');
+    return;
+  }
+
+  if (autoReminderEnabled && !reminderTemplateId) {
+    adminToast('Select a reminder template when auto reminder is enabled.', 'error');
+    return;
+  }
+
+  if (autoWinnerEnabled && !winnerTemplateId) {
+    adminToast('Select a winner template when auto winner SMS is enabled.', 'error');
     return;
   }
 
@@ -652,6 +731,10 @@ async function saveEvent() {
     location,
     tournament_type: tournamentType,
     has_third_place_match: hasThirdPlaceMatch,
+    auto_sms_reminder_enabled: autoReminderEnabled ? 1 : 0,
+    auto_sms_winner_enabled: autoWinnerEnabled ? 1 : 0,
+    sms_reminder_template_id: autoReminderEnabled ? reminderTemplateId : null,
+    sms_winner_template_id: autoWinnerEnabled ? winnerTemplateId : null,
     description: desc || null,
     status,
     registration_open: registrationOpen ? 1 : 0
@@ -683,7 +766,10 @@ window.editEvent = async function(id) {
   if (!ev) return;
 
   clearEventForm();
-  await loadSportsDropdown();
+  await Promise.all([
+    loadSportsDropdown(),
+    loadAnnouncementTemplateOptions(ev.sms_reminder_template_id || '', ev.sms_winner_template_id || '')
+  ]);
 
   document.getElementById('eventId').value          = ev.id;
   document.getElementById('eventTitle').value       = ev.title || '';
@@ -704,6 +790,19 @@ window.editEvent = async function(id) {
   const regOpenValue = ev.registration_open == null ? '1' : String(Number(ev.registration_open) !== 0 ? 1 : 0);
   const regOpenEl = document.querySelector(`input[name="eventRegistrationOpen"][value="${regOpenValue}"]`);
   if (regOpenEl) regOpenEl.checked = true;
+
+  const reminderEnabled = Number(ev.auto_sms_reminder_enabled || 0) === 1;
+  const winnerEnabled = Number(ev.auto_sms_winner_enabled || 0) === 1;
+  const reminderOnEl = document.getElementById('eventAutoReminder');
+  const winnerOnEl = document.getElementById('eventAutoWinner');
+  const reminderTemplateEl = document.getElementById('eventReminderTemplateId');
+  const winnerTemplateEl = document.getElementById('eventWinnerTemplateId');
+  if (reminderOnEl) reminderOnEl.checked = reminderEnabled;
+  if (winnerOnEl) winnerOnEl.checked = winnerEnabled;
+  if (reminderTemplateEl && ev.sms_reminder_template_id) reminderTemplateEl.value = String(ev.sms_reminder_template_id);
+  if (winnerTemplateEl && ev.sms_winner_template_id) winnerTemplateEl.value = String(ev.sms_winner_template_id);
+  syncEventAutoSmsControls();
+
   document.getElementById('eventModalTitle').textContent = 'Edit Event';
   // Show teams field for existing events
   const teamsGroup = document.getElementById('eventTeamsGroup');
@@ -751,6 +850,10 @@ window.toggleRegistrationOpen = async function(id, currentState) {
       location: ev.location,
       tournament_type: ev.tournament_type || 'single_elimination',
       has_third_place_match: ev.has_third_place_match == null ? true : Number(ev.has_third_place_match) === 1,
+      auto_sms_reminder_enabled: Number(ev.auto_sms_reminder_enabled || 0) === 1 ? 1 : 0,
+      auto_sms_winner_enabled: Number(ev.auto_sms_winner_enabled || 0) === 1 ? 1 : 0,
+      sms_reminder_template_id: ev.sms_reminder_template_id ? Number(ev.sms_reminder_template_id) : null,
+      sms_winner_template_id: ev.sms_winner_template_id ? Number(ev.sms_winner_template_id) : null,
       description: ev.description || null,
       status: ev.status,
       registration_open: newState
@@ -2343,6 +2446,15 @@ function clearEventForm() {
   if (thirdPlaceDefault) thirdPlaceDefault.checked = true;
   const regOpenDefault = document.querySelector('input[name="eventRegistrationOpen"][value="1"]');
   if (regOpenDefault) regOpenDefault.checked = true;
+  const reminderOn = document.getElementById('eventAutoReminder');
+  const winnerOn = document.getElementById('eventAutoWinner');
+  const reminderTpl = document.getElementById('eventReminderTemplateId');
+  const winnerTpl = document.getElementById('eventWinnerTemplateId');
+  if (reminderOn) reminderOn.checked = false;
+  if (winnerOn) winnerOn.checked = false;
+  if (reminderTpl) reminderTpl.value = '';
+  if (winnerTpl) winnerTpl.value = '';
+  syncEventAutoSmsControls();
   const titleEl = document.getElementById('eventModalTitle');
   if (titleEl) titleEl.textContent = 'Add New Event';
   // Hide teams field for new events
