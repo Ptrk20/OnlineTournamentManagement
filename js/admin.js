@@ -430,6 +430,7 @@ let eventSchedulesState = {
   selectedMatchId: null
 };
 let announcementTemplateCache = [];
+const EVENT_MATCH_REMINDER_SMS_ENABLED = false;
 
 async function loadSportsDropdown() {
   const sel = document.getElementById('eventSportsId');
@@ -489,10 +490,22 @@ function syncEventAutoSmsControls() {
   const winnerSel = document.getElementById('eventWinnerTemplateId');
   if (!reminderOn || !winnerOn || !reminderSel || !winnerSel) return;
 
-  reminderSel.disabled = !reminderOn.checked;
+  if (!EVENT_MATCH_REMINDER_SMS_ENABLED) {
+    reminderOn.checked = false;
+    reminderOn.disabled = true;
+    reminderSel.value = '';
+    reminderSel.disabled = true;
+
+    const reminderGroup = document.getElementById('eventAutoReminderGroup');
+    if (reminderGroup) reminderGroup.style.display = 'none';
+  }
+
+  if (EVENT_MATCH_REMINDER_SMS_ENABLED) {
+    reminderSel.disabled = !reminderOn.checked;
+  }
   winnerSel.disabled = !winnerOn.checked;
 
-  if (!reminderOn.checked) reminderSel.value = '';
+  if (!EVENT_MATCH_REMINDER_SMS_ENABLED || !reminderOn.checked) reminderSel.value = '';
   if (!winnerOn.checked) winnerSel.value = '';
 }
 
@@ -693,7 +706,7 @@ async function saveEvent() {
   const tournamentType = document.getElementById('eventTournamentType')?.value || 'single_elimination';
   const hasThirdPlaceMatch = (document.querySelector('input[name="eventThirdPlace"]:checked')?.value || 'yes') === 'yes';
   const registrationOpen = Number(document.querySelector('input[name="eventRegistrationOpen"]:checked')?.value ?? 1) === 1;
-  const autoReminderEnabled = !!document.getElementById('eventAutoReminder')?.checked;
+  const autoReminderEnabled = EVENT_MATCH_REMINDER_SMS_ENABLED && !!document.getElementById('eventAutoReminder')?.checked;
   const autoWinnerEnabled = !!document.getElementById('eventAutoWinner')?.checked;
   const reminderTemplateIdRaw = document.getElementById('eventReminderTemplateId')?.value || '';
   const winnerTemplateIdRaw = document.getElementById('eventWinnerTemplateId')?.value || '';
@@ -791,7 +804,7 @@ window.editEvent = async function(id) {
   const regOpenEl = document.querySelector(`input[name="eventRegistrationOpen"][value="${regOpenValue}"]`);
   if (regOpenEl) regOpenEl.checked = true;
 
-  const reminderEnabled = Number(ev.auto_sms_reminder_enabled || 0) === 1;
+  const reminderEnabled = EVENT_MATCH_REMINDER_SMS_ENABLED && Number(ev.auto_sms_reminder_enabled || 0) === 1;
   const winnerEnabled = Number(ev.auto_sms_winner_enabled || 0) === 1;
   const reminderOnEl = document.getElementById('eventAutoReminder');
   const winnerOnEl = document.getElementById('eventAutoWinner');
