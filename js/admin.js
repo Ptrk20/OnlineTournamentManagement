@@ -5943,21 +5943,24 @@ function initReportsPage() {
 
   const loadReportData = async () => {
     try {
-      const [eventsRes, regRes, msgRes] = await Promise.all([
+      const [eventsRes, regRes, msgRes, annRes] = await Promise.all([
         fetch('../api/events/read.php'),
         fetch('../api/registrations/read.php'),
-        fetch('../api/contact/read-messages.php')
+        fetch('../api/contact/read-messages.php'),
+        fetch('../api/announcements/read.php')
       ]);
 
-      const [eventsJson, regJson, msgJson] = await Promise.all([
+      const [eventsJson, regJson, msgJson, annJson] = await Promise.all([
         parseApiJson(eventsRes),
         parseApiJson(regRes),
-        parseApiJson(msgRes)
+        parseApiJson(msgRes),
+        parseApiJson(annRes)
       ]);
 
       const events = eventsJson.success && Array.isArray(eventsJson.data) ? eventsJson.data : [];
       const regs = regJson.success && Array.isArray(regJson.data) ? regJson.data : [];
       const msgs = msgJson.success && Array.isArray(msgJson.data) ? msgJson.data : [];
+      const anns = annJson.success && Array.isArray(annJson.data) ? annJson.data : [];
 
       const bracketData = await Promise.all(events.map(async (event) => {
         try {
@@ -6045,15 +6048,12 @@ function initReportsPage() {
         submitted_at: String(msg.submitted_at || '-')
       }));
 
-      const ann = (typeof DataStore !== 'undefined' && DataStore.getAnnouncements)
-        ? DataStore.getAnnouncements()
-        : [];
-      const announcementRows = Array.isArray(ann) ? ann.map((item) => ({
+      const announcementRows = anns.map((item) => ({
         title: String(item.title || '-'),
         message: String(item.message || '-'),
         message_preview: shortenText(item.message || '-', 84),
-        date: String(item.date || '-')
-      })) : [];
+        date: formatDateForReport(item.created_at || item.updated_at || '')
+      }));
 
       reportState.raw.eventsMatches = eventsMatchesRows;
       reportState.raw.registrations = registrationRows;
