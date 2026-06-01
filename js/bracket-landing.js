@@ -149,6 +149,54 @@
     return team ? (team.name || 'Team') : '-select team-';
   }
 
+  function isEliminationType() {
+    const type = String(bracket?.tournament_type || '');
+    return type === 'single_elimination' || type === 'double_elimination';
+  }
+
+  function findFeederForSlot(match, slotKey) {
+    if (!match || !slotKey) return null;
+    return (bracket.matches || []).find(src => (
+      (Number(src.next_match_id) === Number(match.id) && String(src.next_slot) === slotKey) ||
+      (Number(src.loser_next_match_id) === Number(match.id) && String(src.loser_next_slot) === slotKey)
+    )) || null;
+  }
+
+  function isManualTeamSelectionAllowed(match) {
+    if (!match) return false;
+    if (!isEliminationType()) return true;
+
+    const type = String(bracket?.tournament_type || '');
+    const roundNo = Number(match.round || 1);
+    const stage = String(match.bracket_stage || 'main');
+
+    if (type === 'single_elimination') {
+      return roundNo === 1 && stage === 'main';
+    }
+
+    if (type === 'double_elimination') {
+      return roundNo === 1 && stage === 'upper';
+    }
+
+    return false;
+  }
+
+  function emptySlotLabel(match, slotKey) {
+    const feeder = findFeederForSlot(match, slotKey);
+    if (feeder) return 'TBA';
+
+    if (isEliminationType() && !isManualTeamSelectionAllowed(match)) {
+      return 'TBA';
+    }
+
+    return '-select team-';
+  }
+
+  function teamNameForSlot(match, slotKey) {
+    const team = slotKey === 'team1' ? match.team1 : match.team2;
+    return team ? (team.name || 'Team') : emptySlotLabel(match, slotKey);
+  }
+
   function teamSeed(team) {
     if (!team) return '-';
     const idx = (bracket.teams || []).findIndex(t => Number(t.id) === Number(team.id));
@@ -211,15 +259,20 @@
     return (bracket.teams || []).filter(t => !selectedInRound.has(Number(t.id)));
   }
 
-  function renderTeamSelect(selectEl, options, selectedId) {
+  function renderTeamSelect(selectEl, options, selectedId, cfg = {}) {
     if (!selectEl) return;
     const selected = selectedId == null ? '' : String(selectedId);
+    const placeholder = cfg.placeholder || '-select team-';
+    const allowBye = cfg.allowBye !== false;
+
     selectEl.innerHTML =
-      '<option value="">-select team-</option>' +
-      '<option value="__BYE__">BYE (auto-advance opponent)</option>' +
+      '<option value="">' + esc(placeholder) + '</option>' +
+      (allowBye ? '<option value="__BYE__">BYE (auto-advance opponent)</option>' : '') +
       options.map(team =>
         '<option value="' + Number(team.id) + '" ' + (String(Number(team.id)) === selected ? 'selected' : '') + '>' + esc(team.name || 'Team') + '</option>'
       ).join('');
+
+    selectEl.disabled = cfg.disabled === true;
   }
 
   function eliminationRoundLabelByMatchCount(matchCount, roundNo) {
@@ -234,11 +287,48 @@
   function openTeamSelection(match) {
     const team1Select  = document.getElementById('matchTeam1Select');
     const team2Select  = document.getElementById('matchTeam2Select');
-    const team1Options = availableTeamsForMatch(match, 'team1');
-    const team2Options = availableTeamsForMatch(match, 'team2');
+    const saveBtn = document.getElementById('saveMatchTeamsBtn');
+    const editable = isManualTeamSelectionAllowed(match);
 
-    renderTeamSelect(team1Select, team1Options, match.team1 ? Number(match.team1.id) : null);
-    renderTeamSelect(team2Select, team2Options, match.team2 ? Number(match.team2.id) : null);
+    if (editable) {
+      const team1Options = availableTeamsForMatch(match, 'team1');
+      const team2Options = availableTeamsForMatch(match, 'team2');
+      renderTeamSelect(team1Select, team1Options, match.team1 ? Number(match.team1.id) : null, {
+        placeholder: emptySlotLabel(match, 'team1'),
+        allowBye: true,
+        disabled: false
+      });
+      renderTeamSelect(team2Select, team2Options, match.team2 ? Number(match.team2.id) : null, {
+        placeholder: emptySlotLabel(match, 'team2'),
+        allowBye: true,
+        disabled: false
+      });
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Teams';
+        saveBtn.title = '';
+      }
+      return;
+    }
+
+    const team1LockedOptions = match.team1 ? [match.team1] : [];
+    const team2LockedOptions = match.team2 ? [match.team2] : [];
+    renderTeamSelect(team1Select, team1LockedOptions, match.team1 ? Number(match.team1.id) : null, {
+      placeholder: emptySlotLabel(match, 'team1'),
+      allowBye: false,
+      disabled: true
+    });
+    renderTeamSelect(team2Select, team2LockedOptions, match.team2 ? Number(match.team2.id) : null, {
+      placeholder: emptySlotLabel(match, 'team2'),
+      allowBye: false,
+      disabled: true
+    });
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Auto-assigned by previous results';
+      saveBtn.title = 'Teams for this match are assigned automatically.';
+    }
   }
 
   function hasSavedMatchInfo(match) {
@@ -252,9 +342,48 @@
   }
 
   function defaultTabForMatch(match) {
-    if (!match.team1 || !match.team2) return 'teams';
+    if (!match.team1 || !match.team2) {
+      return isManualTeamSelectionAllowed(match) ? 'teams' : 'info';
+    }
     if (hasSavedMatchInfo(match)) return 'scores';
     return 'info';
+  }
+
+  function isRoundTwoOrLaterEliminationMatch(match) {
+    if (!match || !isEliminationType()) return false;
+    return Number(match.round || 1) >= 2;
+  }
+
+  function hasUndecidedFeederWinner(match) {
+    if (!match) return false;
+    const feeder1 = findFeederForSlot(match, 'team1');
+    const feeder2 = findFeederForSlot(match, 'team2');
+    const feeders = [feeder1, feeder2].filter(Boolean);
+    if (!feeders.length) return false;
+
+    return feeders.some((feeder) => {
+      const status = String(feeder.status || 'Pending').toLowerCase();
+      return status !== 'completed' || feeder.winner_team_id == null;
+    });
+  }
+
+  function shouldHideTeamsAndScoresTabs(match) {
+    if (!isRoundTwoOrLaterEliminationMatch(match)) return false;
+    const teamsComplete = Boolean(match.team1 && match.team2);
+    return !teamsComplete || hasUndecidedFeederWinner(match);
+  }
+
+  function updateMatchTabVisibility(match) {
+    const hideTabs = shouldHideTeamsAndScoresTabs(match);
+    const teamsTabBtn = document.querySelector('.tab-btn[data-tab="teams"]');
+    const scoresTabBtn = document.querySelector('.tab-btn[data-tab="scores"]');
+    const teamsPane = document.getElementById('tab-teams');
+    const scoresPane = document.getElementById('tab-scores');
+
+    if (teamsTabBtn) teamsTabBtn.style.display = hideTabs ? 'none' : '';
+    if (scoresTabBtn) scoresTabBtn.style.display = hideTabs ? 'none' : '';
+    if (teamsPane) teamsPane.style.display = hideTabs ? 'none' : '';
+    if (scoresPane) scoresPane.style.display = hideTabs ? 'none' : '';
   }
 
   function autoAdvanceByes() {
@@ -283,6 +412,20 @@
       match.status         = 'Completed';
       assignWinnerToNext(match, winner);
       // BYE doesn't generate a real loser, no loser routing needed
+
+      // Persist auto-advance so DB state matches UI state.
+      // Without this, downstream matches can have a winner but missing opponent slot in DB,
+      // causing loser placeholders in winner SMS to render blank.
+      apiUpdateMatch({
+        id: dbIdForMatch(match),
+        team1_registration_id: match.team1 ? Number(match.team1.id) : null,
+        team2_registration_id: match.team2 ? Number(match.team2.id) : null,
+        team1_score: Number(match.score1 || 0),
+        team2_score: Number(match.score2 || 0),
+        winner_registration_id: match.winner_team_id,
+        match_status: 'Completed'
+      });
+
       changed = true;
     });
     if (changed) saveBracket();
@@ -335,12 +478,12 @@
           '<div class="match-card" data-match-id="' + match.id + '">' +
             '<div class="team-row' + (winnerSide === 1 ? ' winner' : '') + '">' +
               '<div class="seed-col">' + esc(teamSeed(match.team1)) + '</div>' +
-              '<div class="team-name">' + esc(teamName(match.team1)) + '</div>' +
+              '<div class="team-name">' + esc(teamNameForSlot(match, 'team1')) + '</div>' +
               '<div class="team-score">' + (Number(match.score1 || 0)) + '</div>' +
             '</div>' +
             '<div class="team-row' + (winnerSide === 2 ? ' winner' : '') + '">' +
               '<div class="seed-col">' + esc(teamSeed(match.team2)) + '</div>' +
-              '<div class="team-name">' + esc(teamName(match.team2)) + '</div>' +
+              '<div class="team-name">' + esc(teamNameForSlot(match, 'team2')) + '</div>' +
               '<div class="team-score">' + (Number(match.score2 || 0)) + '</div>' +
             '</div>' +
           '</div>' +
@@ -358,12 +501,12 @@
               '<div class="match-card" data-match-id="' + tp.id + '">' +
                 '<div class="team-row' + (winnerSide === 1 ? ' winner' : '') + '">' +
                   '<div class="seed-col">' + esc(teamSeed(tp.team1)) + '</div>' +
-                  '<div class="team-name">' + esc(teamName(tp.team1)) + '</div>' +
+                  '<div class="team-name">' + esc(teamNameForSlot(tp, 'team1')) + '</div>' +
                   '<div class="team-score">' + (Number(tp.score1 || 0)) + '</div>' +
                 '</div>' +
                 '<div class="team-row' + (winnerSide === 2 ? ' winner' : '') + '">' +
                   '<div class="seed-col">' + esc(teamSeed(tp.team2)) + '</div>' +
-                  '<div class="team-name">' + esc(teamName(tp.team2)) + '</div>' +
+                  '<div class="team-name">' + esc(teamNameForSlot(tp, 'team2')) + '</div>' +
                   '<div class="team-score">' + (Number(tp.score2 || 0)) + '</div>' +
                 '</div>' +
               '</div>' +
@@ -401,12 +544,12 @@
           '<div class="match-card" data-match-id="' + match.id + '">' +
             '<div class="team-row' + (winnerSide === 1 ? ' winner' : '') + '">' +
               '<div class="seed-col">' + esc(teamSeed(match.team1)) + '</div>' +
-              '<div class="team-name">' + esc(teamName(match.team1)) + '</div>' +
+              '<div class="team-name">' + esc(teamNameForSlot(match, 'team1')) + '</div>' +
               '<div class="team-score">' + Number(match.score1 || 0) + '</div>' +
             '</div>' +
             '<div class="team-row' + (winnerSide === 2 ? ' winner' : '') + '">' +
               '<div class="seed-col">' + esc(teamSeed(match.team2)) + '</div>' +
-              '<div class="team-name">' + esc(teamName(match.team2)) + '</div>' +
+              '<div class="team-name">' + esc(teamNameForSlot(match, 'team2')) + '</div>' +
               '<div class="team-score">' + Number(match.score2 || 0) + '</div>' +
             '</div>' +
           '</div>' +
@@ -561,12 +704,12 @@
       return '<div class="match-card" data-match-id="' + match.id + '">' +
         '<div class="team-row' + (winnerSide === 1 ? ' winner' : '') + '">' +
           '<div class="seed-col">' + esc(teamSeed(match.team1)) + '</div>' +
-          '<div class="team-name">' + esc(teamName(match.team1)) + '</div>' +
+          '<div class="team-name">' + esc(teamNameForSlot(match, 'team1')) + '</div>' +
           '<div class="team-score">' + Number(match.score1 || 0) + '</div>' +
         '</div>' +
         '<div class="team-row' + (winnerSide === 2 ? ' winner' : '') + '">' +
           '<div class="seed-col">' + esc(teamSeed(match.team2)) + '</div>' +
-          '<div class="team-name">' + esc(teamName(match.team2)) + '</div>' +
+          '<div class="team-name">' + esc(teamNameForSlot(match, 'team2')) + '</div>' +
           '<div class="team-score">' + Number(match.score2 || 0) + '</div>' +
         '</div>' +
       '</div>';
@@ -698,17 +841,18 @@
       '</div>' +
       '<div class="score-row">' +
         '<div class="score-cell center">' + esc(teamSeed(match.team1)) + '</div>' +
-        '<div class="score-cell">' + esc(teamName(match.team1)) + '</div>' +
+        '<div class="score-cell">' + esc(teamNameForSlot(match, 'team1')) + '</div>' +
         '<div class="score-cell center"><input type="radio" name="winnerPick" value="1" ' + (winnerSide === 1 ? 'checked' : '') + ' /></div>' +
         '<div class="score-cell center"><input class="score-input" id="scoreInput1" type="number" min="0" value="' + Number(match.score1 || 0) + '" /></div>' +
       '</div>' +
       '<div class="score-row">' +
         '<div class="score-cell center">' + esc(teamSeed(match.team2)) + '</div>' +
-        '<div class="score-cell">' + esc(teamName(match.team2)) + '</div>' +
+        '<div class="score-cell">' + esc(teamNameForSlot(match, 'team2')) + '</div>' +
         '<div class="score-cell center"><input type="radio" name="winnerPick" value="2" ' + (winnerSide === 2 ? 'checked' : '') + ' /></div>' +
         '<div class="score-cell center"><input class="score-input" id="scoreInput2" type="number" min="0" value="' + Number(match.score2 || 0) + '" /></div>' +
       '</div>';
 
+    updateMatchTabVisibility(match);
     setActiveTab(defaultTabForMatch(match));
 
     modalEl.classList.add('open');
@@ -717,6 +861,10 @@
   async function saveMatchTeams() {
     const match = findMatch(selectedMatchId);
     if (!match) return;
+    if (!isManualTeamSelectionAllowed(match)) {
+      alert('Teams for this round are assigned automatically from previous match results.');
+      return;
+    }
 
     const team1Val = document.getElementById('matchTeam1Select').value;
     const team2Val = document.getElementById('matchTeam2Select').value;
@@ -874,6 +1022,11 @@
   }
 
   function setActiveTab(name) {
+    const teamsTabHidden = document.querySelector('.tab-btn[data-tab="teams"]')?.style.display === 'none';
+    const scoresTabHidden = document.querySelector('.tab-btn[data-tab="scores"]')?.style.display === 'none';
+    if (teamsTabHidden && name === 'teams') name = 'info';
+    if (scoresTabHidden && name === 'scores') name = 'info';
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.classList.toggle('active', btn.getAttribute('data-tab') === name);
     });
@@ -893,7 +1046,7 @@
     }
 
     titleEl.textContent = bracket.event_title ? (bracket.event_title + ' Bracket') : 'Event Bracket';
-    subEl.textContent   = 'Click any match card to select teams, edit schedule/location, and report scores.';
+    subEl.textContent   = 'Click any match card to edit schedule/location and report scores. Team picking is only enabled for first-round elimination matches.';
     chipType.textContent     = 'Type: '            + String(bracket.tournament_type || '-').replace(/_/g, ' ');
     chipCategory.textContent = 'Category: '        + (bracket.category || '-');
     chipThird.textContent    = '3rd Place Match: ' + (bracket.third_place_match ? 'Yes' : 'No');

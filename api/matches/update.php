@@ -277,6 +277,13 @@ function send_winner_sms_notifications(mysqli $conn, int $matchId): array {
         return ['queued' => 0, 'sent' => 0, 'failed' => 0, 'message' => 'Winner SMS automation disabled for event.'];
     }
 
+    $team1Id = $ctx['team1_registration_id'] !== null ? intval($ctx['team1_registration_id']) : 0;
+    $team2Id = $ctx['team2_registration_id'] !== null ? intval($ctx['team2_registration_id']) : 0;
+    // BYE match: only one side has a team (or both are missing). Do not auto-send winner SMS.
+    if ($team1Id <= 0 || $team2Id <= 0) {
+        return ['queued' => 0, 'sent' => 0, 'failed' => 0, 'message' => 'Winner SMS skipped for BYE match.'];
+    }
+
     $templateId = intval($ctx['sms_winner_template_id'] ?? 0);
     if ($templateId <= 0) {
         return ['queued' => 0, 'sent' => 0, 'failed' => 0, 'message' => 'No winner template selected for event.'];
@@ -310,6 +317,62 @@ function send_winner_sms_notifications(mysqli $conn, int $matchId): array {
         ]
     ];
 
+    // Resolve winner/loser labels robustly for templates.
+    // In some downstream rounds, CASE-based loser_name can be empty due data timing.
+    $winnerId = $ctx['winner_registration_id'] !== null ? intval($ctx['winner_registration_id']) : 0;
+
+    $team1Name = trim((string)($ctx['team1_name'] ?? ''));
+    $team2Name = trim((string)($ctx['team2_name'] ?? ''));
+    $resolvedWinnerName = trim((string)($ctx['winner_name'] ?? ''));
+    $resolvedLoserName = trim((string)($ctx['loser_name'] ?? ''));
+
+    if ($resolvedWinnerName === '') {
+        if ($winnerId > 0 && $winnerId === $team1Id) $resolvedWinnerName = $team1Name;
+        elseif ($winnerId > 0 && $winnerId === $team2Id) $resolvedWinnerName = $team2Name;
+    }
+
+    if ($resolvedLoserName === '') {
+        if ($winnerId > 0 && $winnerId === $team1Id) $resolvedLoserName = $team2Name;
+        elseif ($winnerId > 0 && $winnerId === $team2Id) $resolvedLoserName = $team1Name;
+    }
+
+    if ($resolvedLoserName === '' && $resolvedWinnerName !== '') {
+        if ($team1Name !== '' && strcasecmp($resolvedWinnerName, $team1Name) === 0) {
+            $resolvedLoserName = $team2Name;
+        } elseif ($team2Name !== '' && strcasecmp($resolvedWinnerName, $team2Name) === 0) {
+            $resolvedLoserName = $team1Name;
+        }
+    }
+
+    // Final fallback: load names directly by registration id if names are still empty.
+    if ($resolvedWinnerName === '' && $winnerId > 0) {
+        $nameStmt = $conn->prepare('SELECT team_name FROM team_registrations WHERE id = ? LIMIT 1');
+        if ($nameStmt) {
+            $nameStmt->bind_param('i', $winnerId);
+            $nameStmt->execute();
+            $nameRow = $nameStmt->get_result()->fetch_assoc();
+            $nameStmt->close();
+            $resolvedWinnerName = trim((string)($nameRow['team_name'] ?? ''));
+        }
+    }
+
+    if ($resolvedLoserName === '' && $team1Id > 0 && $team2Id > 0 && $winnerId > 0) {
+        $loserId = null;
+        if ($winnerId === $team1Id) $loserId = $team2Id;
+        elseif ($winnerId === $team2Id) $loserId = $team1Id;
+
+        if ($loserId) {
+            $nameStmt = $conn->prepare('SELECT team_name FROM team_registrations WHERE id = ? LIMIT 1');
+            if ($nameStmt) {
+                $nameStmt->bind_param('i', $loserId);
+                $nameStmt->execute();
+                $nameRow = $nameStmt->get_result()->fetch_assoc();
+                $nameStmt->close();
+                $resolvedLoserName = trim((string)($nameRow['team_name'] ?? ''));
+            }
+        }
+    }
+
     $gateway = sms_blaster_load_gateway($conn);
     $queued = 0;
     $sent = 0;
@@ -339,8 +402,17 @@ function send_winner_sms_notifications(mysqli $conn, int $matchId): array {
         if (!$normalizedPhone) continue;
 
         $vars = [
-            'winner' => (string)($ctx['winner_name'] ?? ''),
-            'loser' => (string)($ctx['loser_name'] ?? ''),
+            'winner' => $resolvedWinnerName,
+            'winner_name' => $resolvedWinnerName,
+            'loser' => $resolvedLoserName,
+            'loser_name' => $resolvedLoserName,
+            'loser_team' => $resolvedLoserName,
+            'loser_team_name' => $resolvedLoserName,
+            'loserteam' => $resolvedLoserName,
+            'losing_team' => $resolvedLoserName,
+            'losing_team_name' => $resolvedLoserName,
+            'defeated_team' => $resolvedLoserName,
+            'defeated_team_name' => $resolvedLoserName,
             'event' => (string)($ctx['event_title'] ?? ''),
             'category' => (string)($ctx['category'] ?? ''),
             'team' => (string)($r['team_name'] ?? ''),
@@ -422,11 +494,20 @@ function normalize_sms_phone(?string $phone): ?string {
 function render_sms_template(string $template, array $vars): string {
     $normalized = [];
     foreach ($vars as $k => $v) {
-        $normalized[strtolower((string)$k)] = (string)$v;
+        $rawKey = strtolower(trim((string)$k));
+        $normalized[$rawKey] = (string)$v;
+        $normalized[str_replace([' ', '-'], '_', $rawKey)] = (string)$v;
+        $normalized[str_replace([' ', '-', '_'], '', $rawKey)] = (string)$v;
     }
 
-    return preg_replace_callback('/\{([a-zA-Z0-9_]+)\}/', function ($m) use ($normalized) {
-        $key = strtolower((string)($m[1] ?? ''));
-        return array_key_exists($key, $normalized) ? $normalized[$key] : $m[0];
+    // Accept both {key} and {{ key }}, and normalize keys with spaces/hyphens.
+    return preg_replace_callback('/\{\{?\s*([a-zA-Z0-9_\-\s]+?)\s*\}\}?/', function ($m) use ($normalized) {
+        $keyRaw = strtolower(trim((string)($m[1] ?? '')));
+        $key = str_replace([' ', '-'], '_', $keyRaw);
+        $flat = str_replace('_', '', $key);
+
+        if (array_key_exists($key, $normalized)) return $normalized[$key];
+        if (array_key_exists($flat, $normalized)) return $normalized[$flat];
+        return $m[0];
     }, $template);
 }

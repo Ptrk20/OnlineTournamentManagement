@@ -1,20 +1,20 @@
 <?php
 /**
- * Update Registration Status API
- * PUT/POST /api/registrations/update-status.php
+ * Delete Registration API
+ * DELETE/POST /api/registrations/delete.php
  */
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: PUT, POST');
+header('Access-Control-Allow-Methods: DELETE, POST');
 
 require_once '../../config/db.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'PUT' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER['REQUEST_METHOD'] !== 'DELETE' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     die(json_encode([
         'success' => false,
-        'message' => 'Method not allowed. Use PUT or POST.'
+        'message' => 'Method not allowed. Use DELETE or POST.'
     ]));
 }
 
@@ -28,29 +28,12 @@ if (!is_array($input)) {
 }
 
 $id = intval($input['id'] ?? 0);
-$status = trim((string)($input['status'] ?? ''));
-$reviewed_by_name = trim((string)($input['reviewed_by_name'] ?? ''));
-$notes = trim((string)($input['notes'] ?? ''));
-
 if ($id <= 0) {
     http_response_code(400);
     die(json_encode([
         'success' => false,
         'message' => 'Invalid registration ID.'
     ]));
-}
-
-$valid_statuses = ['Pending', 'Approved', 'Rejected'];
-if (!in_array($status, $valid_statuses, true)) {
-    http_response_code(400);
-    die(json_encode([
-        'success' => false,
-        'message' => 'Invalid status. Must be Pending, Approved, or Rejected.'
-    ]));
-}
-
-if ($reviewed_by_name === '') {
-    $reviewed_by_name = 'Administrator';
 }
 
 $exists_stmt = $conn->prepare('SELECT id FROM team_registrations WHERE id = ?');
@@ -65,6 +48,7 @@ if (!$exists_stmt) {
 $exists_stmt->bind_param('i', $id);
 $exists_stmt->execute();
 if ($exists_stmt->get_result()->num_rows === 0) {
+    $exists_stmt->close();
     http_response_code(404);
     die(json_encode([
         'success' => false,
@@ -73,7 +57,7 @@ if ($exists_stmt->get_result()->num_rows === 0) {
 }
 $exists_stmt->close();
 
-$stmt = $conn->prepare('UPDATE team_registrations SET status = ?, notes = ?, reviewed_by_name = ?, reviewed_at = NOW() WHERE id = ?');
+$stmt = $conn->prepare('DELETE FROM team_registrations WHERE id = ?');
 if (!$stmt) {
     http_response_code(500);
     die(json_encode([
@@ -82,20 +66,20 @@ if (!$stmt) {
     ]));
 }
 
-$stmt->bind_param('sssi', $status, $notes, $reviewed_by_name, $id);
+$stmt->bind_param('i', $id);
 
 if ($stmt->execute()) {
     http_response_code(200);
     echo json_encode([
         'success' => true,
-        'message' => 'Registration status updated successfully.',
+        'message' => 'Registration deleted successfully.',
         'affected_rows' => $stmt->affected_rows
     ]);
 } else {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Error updating registration status: ' . $stmt->error
+        'message' => 'Error deleting registration: ' . $stmt->error
     ]);
 }
 

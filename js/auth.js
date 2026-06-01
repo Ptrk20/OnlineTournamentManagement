@@ -79,6 +79,7 @@ const AuthModule = (() => {
           username: data.user.username,
           role:     data.user.role,
           email:    data.user.email,
+          phone:    data.user.phone || '',
           token:    generateToken(),
           expires:  Date.now() + 8 * 60 * 60 * 1000, // 8 hours
         };

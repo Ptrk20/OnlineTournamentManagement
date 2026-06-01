@@ -45,7 +45,7 @@ if (empty($username) || empty($password)) {
 }
 
 // Query database for user
-$stmt = $conn->prepare("SELECT id, username, password_hash, full_name, email, role, status FROM users WHERE username = ? AND status = 'Active'");
+$stmt = $conn->prepare("SELECT id, username, password_hash, full_name, email, phone, role, status FROM users WHERE username = ? AND status = 'Active'");
 
 if (!$stmt) {
     http_response_code(500);
@@ -85,6 +85,7 @@ $_SESSION['user_id'] = $user['id'];
 $_SESSION['username'] = $user['username'];
 $_SESSION['full_name'] = $user['full_name'];
 $_SESSION['email'] = $user['email'];
+$_SESSION['phone'] = $user['phone'];
 $_SESSION['role'] = $user['role'];
 
 http_response_code(200);
@@ -96,6 +97,7 @@ echo json_encode([
         'username' => $user['username'],
         'full_name' => $user['full_name'],
         'email' => $user['email'],
+        'phone' => $user['phone'],
         'role' => $user['role']
     ]
 ]);

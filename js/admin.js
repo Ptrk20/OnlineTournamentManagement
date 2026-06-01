@@ -628,6 +628,42 @@ function formatEventDate(dtStr) {
   });
 }
 
+function normalizeEventDateTimeForConflict(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.replace(' ', 'T').slice(0, 16);
+}
+
+function normalizeEventLocationForConflict(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+async function eventScheduleHasConflict(currentEventId, startDate, location) {
+  let rows = [];
+  try {
+    const res = await fetch('../api/events/read.php');
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to load events.');
+    rows = Array.isArray(json.data) ? json.data : [];
+  } catch (err) {
+    rows = Array.isArray(eventsCache) ? eventsCache : [];
+  }
+
+  const targetDateTime = normalizeEventDateTimeForConflict(startDate);
+  const targetLocation = normalizeEventLocationForConflict(location);
+  const targetId = Number(currentEventId || 0);
+
+  return rows.some((ev) => {
+    if (targetId > 0 && Number(ev.id) === targetId) return false;
+    const sameDateTime = normalizeEventDateTimeForConflict(ev.event_start_date) === targetDateTime;
+    const sameLocation = normalizeEventLocationForConflict(ev.location) === targetLocation;
+    return sameDateTime && sameLocation;
+  });
+}
+
 async function renderEventsTable(filter = '') {
   const tbody = document.getElementById('eventsTableBody');
   if (!tbody) return;
@@ -731,6 +767,12 @@ async function saveEvent() {
   if (autoWinnerEnabled && !winnerTemplateId) {
     adminToast('Select a winner template when auto winner SMS is enabled.', 'error');
     return;
+  }
+
+  const hasConflict = await eventScheduleHasConflict(id, startDate, location);
+  if (hasConflict) {
+    const proceed = confirm('It shows that another event is scheduled for the same date, time, and location. Are you sure you want to continue?');
+    if (!proceed) return;
   }
 
   // teams_count is auto-calculated from approved registrations; don't send it
@@ -3083,6 +3125,11 @@ function initRegistrationManager() {
     saveBtn.addEventListener('click', () => saveRegistration(session));
   }
 
+  const saveStatusBtn = document.getElementById('saveRegistrationStatusBtn');
+  if (saveStatusBtn) {
+    saveStatusBtn.addEventListener('click', () => saveRegistrationStatusEdit(session));
+  }
+
   const sportSelect = document.getElementById('regSportId');
   if (sportSelect) {
     sportSelect.addEventListener('change', handleRegistrationSelectionChange);
@@ -3302,12 +3349,44 @@ function seedRepresentativeInfoFromSession(session) {
   const repFirstName = document.getElementById('repFirstName');
   const repLastName = document.getElementById('repLastName');
   const regEmail = document.getElementById('regEmail');
+  const regContact = document.getElementById('regContact');
 
   const name = String(session.name || '').trim();
   const parts = name.split(/\s+/).filter(Boolean);
   if (repFirstName && !repFirstName.value) repFirstName.value = parts[0] || '';
   if (repLastName && !repLastName.value) repLastName.value = parts.length > 1 ? parts.slice(1).join(' ') : '';
   if (regEmail && !regEmail.value) regEmail.value = session.email || '';
+  if (regContact && !regContact.value) {
+    const phone = String(session.phone || session.contact_number || '').trim();
+    if (phone) {
+      regContact.value = phone;
+    } else if (Number(session.id) > 0) {
+      // Backfill phone for older sessions that were created before phone was included in login payload.
+      fetch(`../api/users/read.php?id=${encodeURIComponent(Number(session.id))}`)
+        .then(parseApiJson)
+        .then((data) => {
+          if (!data?.success || !data?.data) return;
+          const fetchedPhone = String(data.data.phone || '').trim();
+          if (!fetchedPhone) return;
+
+          if (!regContact.value) regContact.value = fetchedPhone;
+
+          try {
+            const raw = sessionStorage.getItem('otm_session');
+            const current = raw ? JSON.parse(raw) : null;
+            if (current && Number(current.id) === Number(session.id)) {
+              current.phone = fetchedPhone;
+              sessionStorage.setItem('otm_session', JSON.stringify(current));
+            }
+          } catch (_) {
+            // Non-fatal: fallback prefill still works even if session update fails.
+          }
+        })
+        .catch(() => {
+          // Non-fatal: keep field editable for manual input.
+        });
+    }
+  }
 }
 
 function addRegistrationPlayer() {
@@ -3535,8 +3614,10 @@ async function renderRegistrationsTable(session, filter = '') {
   }
 
   tbody.innerHTML = rows.map((row, index) => {
+    const canAdminManage = isAdministratorSession(session);
+
     const canReview =
-      isAdministratorSession(session) &&
+      canAdminManage &&
       String(row.status || '').toLowerCase() === 'pending';
 
     const canEdit =
@@ -3556,9 +3637,11 @@ async function renderRegistrationsTable(session, filter = '') {
         <td>
           <div class="action-btns">
             <button class="action-btn view" onclick="viewRegistrationRequest(${Number(row.id)})" title="View Request">&#128065;</button>
+            ${canAdminManage ? `<button class="action-btn edit" onclick="editRegistrationStatus(${Number(row.id)})" title="Edit Status / Comments">✏️</button>` : ''}
             ${canEdit ? `<button class="action-btn edit" onclick="editRegistration(${Number(row.id)})" title="Edit Registration">✏️</button>` : ''}
             ${canReview ? `<button class="action-btn edit" onclick="updateRegistrationStatus(${Number(row.id)}, 'Approved')" title="Approve">&#10003;</button>` : ''}
             ${canReview ? `<button class="action-btn del" onclick="updateRegistrationStatus(${Number(row.id)}, 'Rejected')" title="Reject">&#10005;</button>` : ''}
+            ${canAdminManage ? `<button class="action-btn del" onclick="deleteRegistration(${Number(row.id)})" title="Delete">🗑️</button>` : ''}
           </div>
         </td>
       </tr>
@@ -4122,21 +4205,94 @@ window.updateRegistrationStatus = async function(id, status) {
     return;
   }
 
-  if (String(row.status || '').toLowerCase() !== 'pending') {
-    adminToast('Only pending requests can be reviewed.', 'warning');
-    return;
-  }
-
   try {
     await registrationApiRequest('../api/registrations/update-status.php', 'PUT', {
       id: Number(id),
       status,
+      notes: String(row.notes || '').trim(),
       reviewed_by_name: session.name || session.username || 'Administrator'
     });
     await renderRegistrationsTable(session, document.getElementById('registrationSearch')?.value || '');
     adminToast(`Registration ${String(status).toLowerCase()}.`, status === 'Approved' ? 'success' : 'warning');
   } catch (err) {
     adminToast(err.message || 'Failed to update registration status.', 'error');
+  }
+};
+
+window.editRegistrationStatus = async function(id) {
+  const session = AuthModule.getSession();
+  if (!session || !isAdministratorSession(session)) {
+    adminToast('Only administrators can edit registration status.', 'error');
+    return;
+  }
+
+  let row;
+  try {
+    row = await fetchRegistrationById(id);
+  } catch (err) {
+    adminToast(err.message || 'Registration request not found.', 'error');
+    return;
+  }
+
+  const idEl = document.getElementById('registrationStatusEditId');
+  const summaryEl = document.getElementById('registrationStatusEditSummary');
+  const statusEl = document.getElementById('registrationStatusEditValue');
+  const notesEl = document.getElementById('registrationStatusEditNotes');
+
+  if (idEl) idEl.value = String(Number(row.id));
+  if (summaryEl) summaryEl.value = `${row.team_name || 'Team'} - ${row.event_name || 'Event'} (${row.category || '-'})`;
+  if (statusEl) statusEl.value = row.status || 'Pending';
+  if (notesEl) notesEl.value = row.notes || '';
+
+  openModal('registrationStatusModal');
+};
+
+async function saveRegistrationStatusEdit(session) {
+  if (!session || !isAdministratorSession(session)) {
+    adminToast('Only administrators can edit registration status.', 'error');
+    return;
+  }
+
+  const id = Number(document.getElementById('registrationStatusEditId')?.value || 0);
+  const status = String(document.getElementById('registrationStatusEditValue')?.value || 'Pending');
+  const notes = String(document.getElementById('registrationStatusEditNotes')?.value || '').trim();
+
+  if (id <= 0) {
+    adminToast('Invalid registration ID.', 'error');
+    return;
+  }
+
+  try {
+    await registrationApiRequest('../api/registrations/update-status.php', 'PUT', {
+      id,
+      status,
+      notes,
+      reviewed_by_name: session.name || session.username || 'Administrator'
+    });
+
+    closeModal('registrationStatusModal');
+    await renderRegistrationsTable(session, document.getElementById('registrationSearch')?.value || '');
+    adminToast('Registration status/comments updated.');
+  } catch (err) {
+    adminToast(err.message || 'Failed to update registration status.', 'error');
+  }
+}
+
+window.deleteRegistration = async function(id) {
+  const session = AuthModule.getSession();
+  if (!session || !isAdministratorSession(session)) {
+    adminToast('Only administrators can delete registrations.', 'error');
+    return;
+  }
+
+  if (!confirm('Delete this registration? This action cannot be undone.')) return;
+
+  try {
+    await registrationApiRequest('../api/registrations/delete.php', 'DELETE', { id: Number(id) });
+    await renderRegistrationsTable(session, document.getElementById('registrationSearch')?.value || '');
+    adminToast('Registration deleted.', 'warning');
+  } catch (err) {
+    adminToast(err.message || 'Failed to delete registration.', 'error');
   }
 };
 
